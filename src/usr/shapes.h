@@ -27,3 +27,8 @@ class Triangle: public Shape {
     public:
     INHERIT_SHAPE_INIT
 };
+
+class Cube : public Shape {
+    public:
+    INHERIT_SHAPE_INIT
+};

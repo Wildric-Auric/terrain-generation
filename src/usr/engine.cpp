@@ -65,11 +65,11 @@ VkResult setupRdrpassFmbuffs(Renderpass& rdrpass, Window& win, VulkanData& _vkda
 
             if (colIter != rdrpass._subpasses.resources.end()) {
                 for (j=0;j < rdrpass._subpasses._strideInfo[k].colLen;++j) {
-                    //if (rdrpass._subpassHjckIndex == k && rdrpass._attHjckIndex == j)  {
-                    //    att.push_back(views[i].handle);
-                    //    ++colIter;
-                    //    continue;
-                    //}
+                    if (rdrpass._subpassHjckIndex == k && rdrpass._attHjckIndex == j)  {
+                        att.push_back(views[i].handle);
+                        ++colIter;
+                        continue;
+                    }
                     att.push_back((colIter++)->view.handle);
                 }
             }
@@ -140,7 +140,7 @@ void Engine::run(Vkapp& app) {
     rdrpass._subpasses.setup(1,4);
     rdrpass._subpasses.add(app.win, app.data, att, nullptr);  //First subpass
     colAtt->desc.format = VK_FORMAT_R8G8B8A8_UNORM;
-    //rdrpass.setSwpChainHijack(0, 0);
+    rdrpass.setSwpChainHijack(-1, 0);
     rdrpass.create(app.data, app.win);
     rdrpass.fillBeginInfo(app.win);
 
@@ -202,6 +202,9 @@ void Engine::run(Vkapp& app) {
     fragS2.dstr();
     vertS2.dstr();
     //----------Allocate Descriptor---------
+    DescSet mrtDescSet{};
+    descPool.allocDescSet(&mrtDescSet);
+
     DescSet descSet{};
     descPool2.allocDescSet(&descSet);
     //----------Create Sampler--------------
@@ -223,13 +226,26 @@ void Engine::run(Vkapp& app) {
     //-----------Loop------------
     Quad t;
     Quad t0;
+    Cube cube;
+
+    cube.init();
     t.init(); 
 
     t0.setInitSize({2.0f,2.0f});
     t0.init();
 
+    struct {
+        Matrix4<float> view;
+        Matrix4<float> model;
+        Matrix4<float> proj;
+    } unfData;
+
+    UniBuff unf;
+    unf.create(app.data, sizeof(unfData));
+
     ImgView v0, v1, v2;
     while (app.win.ptr->shouldLoop()) {
+
        frame.submitInfo.waitSemaphoreCount = 1;
        if (!frame.begin())
            continue;
@@ -252,13 +268,46 @@ void Engine::run(Vkapp& app) {
        scissor.offset =  { (i32)viewport.x, (i32)viewport.y };
        vkCmdSetViewport(frame.cmdBuff.handle, 0, 1, &viewport);
        vkCmdSetScissor(frame.cmdBuff.handle, 0, 1, &scissor);
+        
+        static float t = 0.0;
+        t += 1.;
+        unfData.proj     = Matrix4<float>(1);
+        unfData.view     = Matrix4<float>(1);
+        unfData.model    = Matrix4<float>(1);
+        PerspectiveMat(unfData.proj, 60, 1.0, 0.001, 100.0);
+        RotateMat(unfData.model, t, { 0.0, 1.0, 0.0 });
+        TranslateMat(unfData.model, {0.0, 0.0, 0.0});
+        LookAt(unfData.view, { 0.0,-1.0, 2.0 }, {0.0,0.0,0.0}, { 0.0, 1.0, 0.0 });
+        unf.wrt(&unfData);
 
+       VkWriteDescriptorSet   wrt0{};
+       VkDescriptorBufferInfo buffInf{};
+       buffInf.offset = 0;
+       buffInf.range  = unf._buff._size;
+       buffInf.buffer = unf._buff.handle;
+
+       wrt0.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+       wrt0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+       wrt0.descriptorCount = 1; 
+       wrt0.pBufferInfo     = &buffInf;
+       mrtDescSet.wrt(&wrt0, 0);
+
+       vkCmdBindDescriptorSets(frame.cmdBuff.handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pline._layout, 0, 1, &mrtDescSet.handle, 0, nullptr);
        vkCmdBindPipeline(frame.cmdBuff.handle, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pline.handle);
-       t.draw();
+       cube.draw();
 
+//       unfData.proj     = Matrix4<float>(1);
+//       unfData.view     = Matrix4<float>(1);
+//       unfData.model    = Matrix4<float>(1);
+//       PerspectiveMat(unfData.proj, 60, 1.0, 0.001, 100.0);
+//       RotateMat(unfData.model, 90, { 1.0, 0.0, 0.0 });
+//       TranslateMat(unfData.model, {0.0, -1.0, 0.0});
+//       unf.wrt(&unfData);
+//       mrtDescSet.wrt(&wrt0, 0);  
+       t0.draw();
+        
 
        rdrpass.end(frame.cmdBuff);
-
        frame.submitInfo.signalSemaphoreCount = 0;
        vkEndCommandBuffer(frame.cmdBuff.handle);
        vkQueueSubmit(frame.cmdBuff.queue, 1, &frame.submitInfo, frame.fenQueueSubmitComplete);
@@ -266,9 +315,9 @@ void Engine::run(Vkapp& app) {
        vkResetFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete);
        vkResetCommandBuffer(frame.cmdBuff.handle, 0);
        vkBeginCommandBuffer(frame.cmdBuff.handle, &frame.beginInfo);
-       frame.submitInfo.signalSemaphoreCount = 1;
-
-
+       frame.submitInfo.signalSemaphoreCount = 1;   
+       vkQueueWaitIdle(q); //I need timeline semaphores and generally sync abstraction
+       
        rdrpass0.begin(frame.cmdBuff, frame.swpIndex);
       
        vkCmdSetViewport(frame.cmdBuff.handle, 0, 1, &viewport);
@@ -332,6 +381,8 @@ void Engine::run(Vkapp& app) {
     compCmdPool.dstr();
     t.destroy();
     t0.destroy();
+    cube.destroy();
+    unf.dstr();
     v0.dstr();
     v1.dstr();
     v2.dstr();
