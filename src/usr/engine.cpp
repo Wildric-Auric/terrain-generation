@@ -185,7 +185,6 @@ void Engine::run(Vkapp& app) {
     pline.layoutCrtInfo.setLayoutCount = 1;
     pline.layoutCrtInfo.pSetLayouts    = &descPool._lytHandle;
     pline.inputAsmState.topology       = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    pline.create(app.data);
 
     pline2.fillCrtInfo(rdrpass0._subpasses._strideInfo[0].colLen);
     pline2.crtInfo.stageCount = 2;
@@ -195,7 +194,12 @@ void Engine::run(Vkapp& app) {
     pline2.layoutCrtInfo.pSetLayouts    = &descPool2._lytHandle;
     pline2.inputAsmState.topology       = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     pline2.crtInfo.subpass              = 0;
+
+    pline.rasterState.polygonMode = VK_POLYGON_MODE_LINE;
+    //pline2.rasterState.polygonMode = VK_POLYGON_MODE_LINE;
+    pline.create(app.data);
     pline2.create(app.data);
+
     //-----------Free Shaders----------- 
     vertS.dstr();
     fragS.dstr();
@@ -227,7 +231,8 @@ void Engine::run(Vkapp& app) {
     Quad t;
     Quad t0;
     Cube cube;
-
+    SubdivQuad subQuad;
+    subQuad.init(10);
     cube.init();
     t.init(); 
 
@@ -274,12 +279,12 @@ void Engine::run(Vkapp& app) {
         unfData.proj     = Matrix4<float>(1);
         unfData.view     = Matrix4<float>(1);
         unfData.model    = Matrix4<float>(1);
+        fvec3 trans      = {0.0f, 0.0f, 0.0f};
         PerspectiveMat(unfData.proj, 60, 1.0, 0.001, 100.0);
         RotateMat(unfData.model, t, { 0.0, 1.0, 0.0 });
-        TranslateMat(unfData.model, {0.0, 0.0, 0.0});
-        LookAt(unfData.view, { 0.0,-1.0, 2.0 }, {0.0,0.0,0.0}, { 0.0, 1.0, 0.0 });
+        TranslateMat(unfData.model, trans);
+        LookAt(unfData.view, { 0.0,-1.0, 2.0 }, trans, { 0.0, 1.0, 0.0 });
         unf.wrt(&unfData);
-
        VkWriteDescriptorSet   wrt0{};
        VkDescriptorBufferInfo buffInf{};
        buffInf.offset = 0;
@@ -290,21 +295,23 @@ void Engine::run(Vkapp& app) {
        wrt0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
        wrt0.descriptorCount = 1; 
        wrt0.pBufferInfo     = &buffInf;
-       mrtDescSet.wrt(&wrt0, 0);
+//       mrtDescSet.wrt(&wrt0, 0);
+
+
+       unfData.proj     = Matrix4<float>(1);
+       unfData.view     = Matrix4<float>(1);
+       unfData.model    = Matrix4<float>(1);
+       PerspectiveMat(unfData.proj, 60, 1.0, 0.001, 100.0);
+       RotateMat(unfData.model, 90, { 1.0, 0.0, 0.0 });
+       TranslateMat(unfData.model, trans);
+       LookAt(unfData.view, { 0.0,-0.1, 0.1 }, trans, { 0.0, 1.0, 0.0 });
+       unf.wrt(&unfData);
+       mrtDescSet.wrt(&wrt0, 0);  
 
        vkCmdBindDescriptorSets(frame.cmdBuff.handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pline._layout, 0, 1, &mrtDescSet.handle, 0, nullptr);
        vkCmdBindPipeline(frame.cmdBuff.handle, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pline.handle);
-       cube.draw();
-
-//       unfData.proj     = Matrix4<float>(1);
-//       unfData.view     = Matrix4<float>(1);
-//       unfData.model    = Matrix4<float>(1);
-//       PerspectiveMat(unfData.proj, 60, 1.0, 0.001, 100.0);
-//       RotateMat(unfData.model, 90, { 1.0, 0.0, 0.0 });
-//       TranslateMat(unfData.model, {0.0, -1.0, 0.0});
-//       unf.wrt(&unfData);
-//       mrtDescSet.wrt(&wrt0, 0);  
-       t0.draw();
+       //cube.draw();
+       subQuad._data.draw();
         
 
        rdrpass.end(frame.cmdBuff);

@@ -32,3 +32,23 @@ class Cube : public Shape {
     public:
     INHERIT_SHAPE_INIT
 };
+
+class Mesh : public Shape {
+    public:
+    std::vector<VertexData> vertices;
+    std::vector<ui32>       indices;
+    void addVert(const VertexData&);
+    void addInd(const ui32);
+    void add(const VertexData* const, const ui32 i);
+    void clean();
+    INHERIT_SHAPE_INIT
+};
+
+class SubdivQuad {
+    public:
+    ui32 _subdiv = 10;
+    Mesh _data;
+    
+    void init(const ui32 sub, const float res = 0.5f);
+    void dstr();
+};

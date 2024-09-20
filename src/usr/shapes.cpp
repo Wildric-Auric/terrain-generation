@@ -110,3 +110,77 @@ void Triangle::init() {
     _vobj.create(GlobalData::app->data, *GlobalData::cmdBuffPool, (float*)strides, sizeof(strides), 0); 
     _vobj.createIndexBuff(GlobalData::app->data, *GlobalData::cmdBuffPool, indices, sizeof(indices), 0);     
 }
+
+void Mesh::clean() {
+    vertices.clear();
+    _vobj.dstr();
+}
+
+
+void Mesh::addVert(const VertexData& v) {
+    vertices.push_back(v);
+}
+
+void Mesh::addInd(const ui32 i) {
+    indices.push_back(i);
+}
+
+void Mesh::add(const VertexData* const v , const ui32 i) {
+    if (v) addVert(*v);
+    if (i != -1) addInd(i);
+}
+
+void Mesh::init() {
+    _indexCount = indices.size();
+    _vobj.create(GlobalData::app->data, *GlobalData::cmdBuffPool, (float*)vertices.data(), vertices.size() * sizeof(vertices[0]), 0); 
+    _vobj.createIndexBuff(GlobalData::app->data, *GlobalData::cmdBuffPool, indices.data(), indices.size() * sizeof(indices[0]), 0);
+}
+
+void SubdivQuad::init(const ui32 sub, const float res) {
+    _subdiv = sub;
+    fvec2 base = {-res, -res};
+    fvec2 end  = {res,  res};
+    float c = pow(2, sub - 1) + 1;
+    fvec2 step = (end - base) * (1.0/c);
+    for (ui32 i = 0; i < c; ++i) {
+        VertexData tmp;
+            tmp.pos = fvec3(base.x + i * step.x,base.y,0);
+            tmp.uv  = fvec2(i * 1.0/c, 0); 
+            _data.addVert(tmp);
+    }
+
+    for (ui32 j = 0; j < c - 1; ++j) {
+        for (ui32 i = 0; i < c - 1 ; ++i)  {
+            VertexData tmp;
+            fvec3 l    = fvec3(base.x + i * step.x, base.y + j * step.y);
+            //Add next row vertices
+            if (i == 0) {
+                tmp.pos = l + fvec3(0, step.y, 0);
+                tmp.uv  = fvec2(i * 1.0/c, (j+1) * 1.0/c); 
+                _data.addVert(tmp); //up
+            }
+            tmp.pos = l + fvec3(step.x, step.y, 0);
+            tmp.uv  = fvec2((i+1) * 1.0/c, (j+1) * 1.0/c); 
+            _data.addVert(tmp); //up right
+            //Add next row indices
+            _data.addInd(j*c + i);
+            _data.addInd(j*c + i + 1);
+            _data.addInd((j+1)*c + i);
+            _data.addInd((j+1)*c + i);
+            _data.addInd(j*c + i + 1);
+            _data.addInd((j+1)*c + i + 1);
+        }
+    }
+
+    _data.init();
+}
+
+void SubdivQuad::dstr() {
+    _data.clean();
+}
+
+
+
+
+
+
