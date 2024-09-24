@@ -1,3 +1,4 @@
+#pragma once
 #include "bcknd/globals.h"
 
 class Component {

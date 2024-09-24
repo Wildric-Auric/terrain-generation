@@ -1,3 +1,5 @@
+#pragma once
+
 #include "bcknd/vertex.h"
 
 #define INHERIT_SHAPE_INIT      \

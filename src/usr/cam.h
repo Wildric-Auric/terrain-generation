@@ -1,3 +1,4 @@
+#pragma once
 #include "components/basic.h"
 
 struct Rect {

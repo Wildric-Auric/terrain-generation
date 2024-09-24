@@ -8,6 +8,7 @@
 
 #include "shared.h"
 #include "shapes.h"
+#include "gfx.h"
 
 #define P0PATHVERT "../build/bin/mrt.vert.spv"
 #define P0PATHFRAG "../build/bin/mrt.frag.spv"
@@ -106,27 +107,19 @@ void Engine::run(Vkapp& app) {
     Renderpass    rdrpass;
     Renderpass    rdrpass0;
     Swapchain     swpchain;
-    Pipeline      pline;
-    Pipeline      pline2;
+
     Frame         frame;
     FrameData     frameData;
     Sampler       defSampler;
     
     //-----------Creating Resources----------- 
+
+
     VulkanSupport::QueueFamIndices qfam;
     VulkanSupport::findQueues(qfam, app.data);
     gfxCmdPool.create(app.data, qfam.gfx );
     compCmdPool.create(app.data, qfam.com);
     VkQueue q = VulkanSupport::getQueue(app.data, offsetof(VulkanSupport::QueueFamIndices, gfx));
-
-    descPool.create(app.data);
-
-    descPool2._lytBindings.resize(3);
-    descPool2._lytBindings[0] = {0, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
-    descPool2._lytBindings[1] = {1, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
-    descPool2._lytBindings[2] = {2, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
-    descPool2.create(app.data);
-
     //-----------Setup and create renderpass----------- 
     //Fist subpass MRT
     AttachmentContainer att;
@@ -161,7 +154,6 @@ void Engine::run(Vkapp& app) {
     setupRdrpassFmbuffs(rdrpass, app.win, app.data, swpchain);
     //-----------Setup Shaders----------- 
 
-    std::vector<char> code;
     Shader fragS, vertS;
     Shader fragS2, vertS2;
     loadShaders(app,P0PATHVERT, P0PATHFRAG, fragS, vertS);
@@ -177,28 +169,8 @@ void Engine::run(Vkapp& app) {
         fragS2.stageCrtInfo
     };
     
+    
     //-----------Create Pipelines----------- 
-    pline.fillCrtInfo(rdrpass._subpasses._strideInfo[0].colLen);
-    pline.crtInfo.stageCount = 2;
-    pline.crtInfo.pStages    = stages;
-    pline.crtInfo.renderPass = rdrpass.handle;
-    pline.layoutCrtInfo.setLayoutCount = 1;
-    pline.layoutCrtInfo.pSetLayouts    = &descPool._lytHandle;
-    pline.inputAsmState.topology       = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-    pline2.fillCrtInfo(rdrpass0._subpasses._strideInfo[0].colLen);
-    pline2.crtInfo.stageCount = 2;
-    pline2.crtInfo.pStages    = stages2;
-    pline2.crtInfo.renderPass = rdrpass0.handle;
-    pline2.layoutCrtInfo.setLayoutCount = 1;
-    pline2.layoutCrtInfo.pSetLayouts    = &descPool2._lytHandle;
-    pline2.inputAsmState.topology       = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    pline2.crtInfo.subpass              = 0;
-
-    pline.rasterState.polygonMode = VK_POLYGON_MODE_LINE;
-    //pline2.rasterState.polygonMode = VK_POLYGON_MODE_LINE;
-    pline.create(app.data);
-    pline2.create(app.data);
 
     //-----------Free Shaders----------- 
     vertS.dstr();
@@ -206,11 +178,8 @@ void Engine::run(Vkapp& app) {
     fragS2.dstr();
     vertS2.dstr();
     //----------Allocate Descriptor---------
-    DescSet mrtDescSet{};
-    descPool.allocDescSet(&mrtDescSet);
+    //descPool.allocDescSet(&mrtDescSet); //test
 
-    DescSet descSet{};
-    descPool2.allocDescSet(&descSet);
     //----------Create Sampler--------------
     defSampler.fillCrtInfo(app.data);
     defSampler.create(app.data);
@@ -226,18 +195,39 @@ void Engine::run(Vkapp& app) {
     GlobalData::cmdBuff = &frame.cmdBuff;
     GlobalData::cmdBuffPool = &gfxCmdPool;
     GlobalData::app         = &app;
+    //---------------test---------------------
+    GfxContext gtx;
+    GfxContext gtxDef;
 
-    //-----------Loop------------
+    std::vector<VkDescriptorSetLayoutBinding> lytBindings;
+    lytBindings =  
+    {{0, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+     {1, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+     {2, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
+    };
+  
+    gtx.setup({P0PATHVERT, P0PATHFRAG}, &rdrpass);
+    gtx.create();
+    gtxDef.setup({ P1PATHVERT, P1PATHFRAG }, &rdrpass0, &lytBindings);
+    gtxDef.create();
+
+    //----------------------------------------
     Quad t;
     Quad t0;
     Cube cube;
     SubdivQuad subQuad;
-    subQuad.init(10);
+
+    GfxObject  obj;
+    GfxObject  rendObj;
+
+    subQuad.init(4);
     cube.init();
     t.init(); 
-
     t0.setInitSize({2.0f,2.0f});
     t0.init();
+
+    obj.init(&gtx, &subQuad._data);
+    rendObj.init(&gtxDef, &t0);
 
     struct {
         Matrix4<float> view;
@@ -249,6 +239,7 @@ void Engine::run(Vkapp& app) {
     unf.create(app.data, sizeof(unfData));
 
     ImgView v0, v1, v2;
+    //-----------Loop------------
     while (app.win.ptr->shouldLoop()) {
 
        frame.submitInfo.waitSemaphoreCount = 1;
@@ -265,8 +256,8 @@ void Engine::run(Vkapp& app) {
        VkRect2D   scissor;
        viewport.minDepth = 0.0f;
        viewport.maxDepth = 1.0f;
-       viewport.width =  Max<i32>(500, 5);
-       viewport.height = Max<i32>(500, 5);
+       viewport.width =  Max<i32>(app.win.drawArea.x, 5);
+       viewport.height = Max<i32>(app.win.drawArea.y, 5);
        viewport.y = Max<i32>(-0.5 * viewport.height + app.win.drawArea.y * 0.5, 0.0);
        viewport.x = Max<i32>(-0.5 * viewport.width  + app.win.drawArea.x * 0.5, 0.0);
        scissor.extent =  {(ui32)viewport.width, (ui32)viewport.height};
@@ -274,6 +265,8 @@ void Engine::run(Vkapp& app) {
        vkCmdSetViewport(frame.cmdBuff.handle, 0, 1, &viewport);
        vkCmdSetScissor(frame.cmdBuff.handle, 0, 1, &scissor);
         
+       gtx.bind(frame.cmdBuff);
+
         static float t = 0.0;
         t += 1.;
         unfData.proj     = Matrix4<float>(1);
@@ -304,14 +297,12 @@ void Engine::run(Vkapp& app) {
        PerspectiveMat(unfData.proj, 60, 1.0, 0.001, 100.0);
        RotateMat(unfData.model, 90, { 1.0, 0.0, 0.0 });
        TranslateMat(unfData.model, trans);
-       LookAt(unfData.view, { 0.0,-0.1, 0.1 }, trans, { 0.0, 1.0, 0.0 });
+       LookAt(unfData.view, { 0.0,-0.0, 0.6 }, trans + fvec3{0.0,0.5,0.0}, { 0.0, 1.0, 0.0 });
        unf.wrt(&unfData);
-       mrtDescSet.wrt(&wrt0, 0);  
+       obj._descSet.wrt(&wrt0, 0);  
+       obj.update(frame.cmdBuff);
 
-       vkCmdBindDescriptorSets(frame.cmdBuff.handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pline._layout, 0, 1, &mrtDescSet.handle, 0, nullptr);
-       vkCmdBindPipeline(frame.cmdBuff.handle, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pline.handle);
-       //cube.draw();
-       subQuad._data.draw();
+       obj.draw();
         
 
        rdrpass.end(frame.cmdBuff);
@@ -329,7 +320,7 @@ void Engine::run(Vkapp& app) {
       
        vkCmdSetViewport(frame.cmdBuff.handle, 0, 1, &viewport);
        vkCmdSetScissor(frame.cmdBuff.handle, 0, 1, &scissor);
-       vkCmdBindPipeline(frame.cmdBuff.handle, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pline2.handle);
+       gtxDef.bind(frame.cmdBuff);
 
        //----------Update Descriptor set and uniform----------
        VkWriteDescriptorSet  wrt = {};
@@ -346,24 +337,23 @@ void Engine::run(Vkapp& app) {
        wrt.descriptorCount = 1;
        wrt.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
        wrt.pImageInfo = &inf;
-       descSet.wrt(&wrt, 0);
+       rendObj._descSet.wrt(&wrt, 0);
        ++iter;
        iter->image.crtInfo.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
        iter->image.changeLyt(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, *frame._data.cmdBuffPool);
        v1.fillCrtInfo(iter->image); v1.create(app.data);
        inf.imageView = v1.handle;
-       descSet.wrt(&wrt, 1);
+       rendObj._descSet.wrt(&wrt, 1);
        ++iter;
        iter->image.crtInfo.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
        iter->image.changeLyt(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, *frame._data.cmdBuffPool);
        v2.fillCrtInfo(iter->image); v2.create(app.data);
        inf.imageView = v2.handle;
-       descSet.wrt(&wrt, 2);
+       rendObj._descSet.wrt(&wrt, 2);
        //-------------------
-       vkCmdBindDescriptorSets(frame.cmdBuff.handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pline2._layout, 0, 1, 
-                               &descSet.handle, 0, nullptr);
+       rendObj.update(frame.cmdBuff);
+       rendObj.draw();
 
-       t0.draw();
 
        rdrpass0.end(frame.cmdBuff); 
        
@@ -376,16 +366,18 @@ void Engine::run(Vkapp& app) {
     }
     //-----------------------Clean Resources------------------
     frame.dstr();
-    pline.dstr();
-    pline2.dstr();
+
+	gtx.dstr();
+    gtxDef.dstr();
+
     swpchain.dstr();
     rdrpass.dstr();
     rdrpass0.dstr();
-    descPool.dstr();
-    descPool2.dstr();
+
+	gfxCmdPool.dstr();
+	compCmdPool.dstr();
+
     defSampler.dstr(); 
-    gfxCmdPool.dstr();
-    compCmdPool.dstr();
     t.destroy();
     t0.destroy();
     cube.destroy();

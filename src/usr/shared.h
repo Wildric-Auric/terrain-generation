@@ -1,3 +1,4 @@
+#pragma once
 #include "bcknd/vkapp.h"
 #include "bcknd/cmd_buffer.h"
 
