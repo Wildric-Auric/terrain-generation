@@ -121,7 +121,7 @@ void Engine::run(Vkapp& app) {
     compCmdPool.create(app.data, qfam.com);
     VkQueue q = VulkanSupport::getQueue(app.data, offsetof(VulkanSupport::QueueFamIndices, gfx));
     //-----------Setup and create renderpass----------- 
-    //Fist subpass MRT
+    //Fist rdrpass MRT
     AttachmentContainer att;
     auto colAtt = att.add();
 
@@ -137,7 +137,7 @@ void Engine::run(Vkapp& app) {
     rdrpass.create(app.data, app.win);
     rdrpass.fillBeginInfo(app.win);
 
-
+    //Second rdrpass for rendering
     AttachmentContainer att0;
     auto colAtt0 = att0.add();
     colAtt0->desc.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; 
@@ -152,34 +152,6 @@ void Engine::run(Vkapp& app) {
     swpchain.create(app.data, app.win, rdrpass0);
     //-----------Create Second rdrpass framebuffers----------
     setupRdrpassFmbuffs(rdrpass, app.win, app.data, swpchain);
-    //-----------Setup Shaders----------- 
-
-    Shader fragS, vertS;
-    Shader fragS2, vertS2;
-    loadShaders(app,P0PATHVERT, P0PATHFRAG, fragS, vertS);
-    loadShaders(app,P1PATHVERT, P1PATHFRAG, fragS2, vertS2);
-
-    VkPipelineShaderStageCreateInfo stages[] = {
-        vertS.stageCrtInfo,
-        fragS.stageCrtInfo
-    };
-
-    VkPipelineShaderStageCreateInfo stages2[] = {
-        vertS2.stageCrtInfo,
-        fragS2.stageCrtInfo
-    };
-    
-    
-    //-----------Create Pipelines----------- 
-
-    //-----------Free Shaders----------- 
-    vertS.dstr();
-    fragS.dstr();
-    fragS2.dstr();
-    vertS2.dstr();
-    //----------Allocate Descriptor---------
-    //descPool.allocDescSet(&mrtDescSet); //test
-
     //----------Create Sampler--------------
     defSampler.fillCrtInfo(app.data);
     defSampler.create(app.data);
@@ -195,13 +167,22 @@ void Engine::run(Vkapp& app) {
     GlobalData::cmdBuff = &frame.cmdBuff;
     GlobalData::cmdBuffPool = &gfxCmdPool;
     GlobalData::app         = &app;
-    //---------------test---------------------
-    GfxContext gtx;
-    GfxContext gtxDef;
+    //---------------Create Abstraction for gfx---------------------
+    GfxContext gtx;    //Context for MRT 
+    GfxContext gtxDef; //Final deferred rendering ctx 
+
+    Quad t;
+    Quad t0;
+    Cube cube;
+    SubdivQuad subQuad;
+
+    GfxObject  obj;
+    GfxObject  rendObj;
 
     std::vector<VkDescriptorSetLayoutBinding> lytBindings;
     lytBindings =  
-    {{0, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+    {
+     {0, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
      {1, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
      {2, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
     };
@@ -211,16 +192,7 @@ void Engine::run(Vkapp& app) {
     gtxDef.setup({ P1PATHVERT, P1PATHFRAG }, &rdrpass0, &lytBindings);
     gtxDef.create();
 
-    //----------------------------------------
-    Quad t;
-    Quad t0;
-    Cube cube;
-    SubdivQuad subQuad;
-
-    GfxObject  obj;
-    GfxObject  rendObj;
-
-    subQuad.init(4);
+    subQuad.init(10);
     cube.init();
     t.init(); 
     t0.setInitSize({2.0f,2.0f});
@@ -235,10 +207,10 @@ void Engine::run(Vkapp& app) {
         Matrix4<float> proj;
     } unfData;
 
-    UniBuff unf;
-    unf.create(app.data, sizeof(unfData));
-
     ImgView v0, v1, v2;
+    UniBuff unf;
+
+    unf.create(app.data, sizeof(unfData));
     //-----------Loop------------
     while (app.win.ptr->shouldLoop()) {
 
@@ -288,8 +260,6 @@ void Engine::run(Vkapp& app) {
        wrt0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
        wrt0.descriptorCount = 1; 
        wrt0.pBufferInfo     = &buffInf;
-//       mrtDescSet.wrt(&wrt0, 0);
-
 
        unfData.proj     = Matrix4<float>(1);
        unfData.view     = Matrix4<float>(1);
@@ -358,11 +328,7 @@ void Engine::run(Vkapp& app) {
        rdrpass0.end(frame.cmdBuff); 
        
        frame.submitInfo.waitSemaphoreCount = 0;
-       //frame.submitInfo.pSignalSemaphores
        frame.end();
-
-       //v2.dstr(); v1.dstr(); v0.dstr();
-
     }
     //-----------------------Clean Resources------------------
     frame.dstr();
