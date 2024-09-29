@@ -1,3 +1,4 @@
+
 #version 450 
 
 layout(set = 0, binding = 0) uniform UBO { 
@@ -9,12 +10,9 @@ layout(set = 0, binding = 0) uniform UBO {
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec2 inUV;
 
-layout(location = 0) out  vec2     fragUV;
-layout(location = 1) out  vec3     pos;
-layout(location = 2) out vec3 normal;
+layout(location = 0) out vec2 fragUV;
+layout(location = 1) out vec3 pos;
 
-vec2 stepPos = vec2(1.0/513.0); 
-float stepUV = 1.0 / 513.0;
 
 float rand(in vec2 uv) {
     return fract(sin(dot(uv,  vec2(12.9898,78.233))) * 43758.5453123);
@@ -47,30 +45,13 @@ float fbm(in vec2 pos) {
    return ret;
 }
 
-float n(in vec2 x) {
-    return fbm(x*5.0);
-    //return fbm(vec2(fbm(x*2.0), fbm(x*3.0)));
-}
-
 void main() {
-    float c            = 0.10;
+
     vec4 worldPos      =  ubo.view * ubo.model * vec4(inPosition,1.0);
     pos  = worldPos.xyz;
-    worldPos.y        +=  c * n(inUV);
+    worldPos.y        +=  0.15 * fbm(vec2(fbm(inUV*7.0), fbm(inUV*14.0)));
     pos  = pos - worldPos.xyz;
     gl_Position        =  ubo.proj * worldPos;
     fragUV             =  inUV; 
 
-    vec3 right       = inPosition; right.x += stepPos.x;
-    vec3 up          = inPosition; up.y    += stepPos.y;
-    
-    right = (ubo.view * ubo.model * vec4(right,1.0)).xyz;
-    up    = (ubo.view * ubo.model * vec4(up, 1.0)).xyz;
-
-    right.y += c * n(vec2(inUV.x + stepUV, inUV.y));
-    up.y    += c * n(vec2(inUV.x, inUV.y + stepUV));
-
-    normal           = normalize( cross(right,up) );
 }
-
-

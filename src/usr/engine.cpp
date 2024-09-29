@@ -17,6 +17,9 @@
 #define P1PATHVERT "../build/bin/def.vert.spv"
 #define P1PATHFRAG "../build/bin/def.frag.spv"
 
+#define P2PATHVERT "../build/bin/shadow.vert.spv"
+#define P2PATHFRAG "../build/bin/shadow.frag.spv"
+
 
 
 
@@ -85,166 +88,102 @@ VkResult setupRdrpassFmbuffs(Renderpass& rdrpass, Window& win, VulkanData& _vkda
     return res;
 }
 
+//just to be legible
 
-void loadShaders(Vkapp& app, const char* vertPath, const char* fragPath, Shader& vertS, Shader& fragS) {
-    std::vector<char> vsrc, fsrc;
-    io::readBin(vertPath, vsrc);
-    io::readBin(fragPath, fsrc);
-    vertS.fillCrtInfo((const ui32*)vsrc.data(), vsrc.size());
-    fragS.fillCrtInfo((const ui32*)fsrc.data(), fsrc.size()); 
-    vertS.create(app.data);
-    fragS.create(app.data);
-    vertS.fillStageCrtInfo(VK_SHADER_STAGE_VERTEX_BIT);
-    fragS.fillStageCrtInfo(VK_SHADER_STAGE_FRAGMENT_BIT);
-}
+fvec3 trans = {0.0f,0.5f,0.f};
 
-void Engine::run(Vkapp& app) {
-    CmdBufferPool gfxCmdPool;
-    CmdBufferPool compCmdPool;
-    CmdBuff       compCmdBuff;
-    DescPool      descPool;
-    DescPool      descPool2;
-    Renderpass    rdrpass;
-    Renderpass    rdrpass0;
-    Swapchain     swpchain;
-
-    Frame         frame;
-    FrameData     frameData;
-    Sampler       defSampler;
-    
-    //-----------Creating Resources----------- 
-
-
-    VulkanSupport::QueueFamIndices qfam;
-    VulkanSupport::findQueues(qfam, app.data);
-    gfxCmdPool.create(app.data, qfam.gfx );
-    compCmdPool.create(app.data, qfam.com);
-    VkQueue q = VulkanSupport::getQueue(app.data, offsetof(VulkanSupport::QueueFamIndices, gfx));
-    //-----------Setup and create renderpass----------- 
-    //Fist rdrpass MRT
-    AttachmentContainer att;
-    auto colAtt = att.add();
-
-    att.addDepth();
-    auto normalAtt     = att.add();
-    auto reflectionAtt = att.add();
-
-
-    rdrpass._subpasses.setup(1,4);
-    rdrpass._subpasses.add(app.win, app.data, att, nullptr);  //First subpass
-    colAtt->desc.format = VK_FORMAT_R8G8B8A8_UNORM;
-    rdrpass.setSwpChainHijack(-1, 0);
-    rdrpass.create(app.data, app.win);
-    rdrpass.fillBeginInfo(app.win);
-
-    //Second rdrpass for rendering
-    AttachmentContainer att0;
-    auto colAtt0 = att0.add();
-    colAtt0->desc.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; 
-    colAtt0->desc.format      = VK_FORMAT_R8G8B8A8_SRGB; 
-    rdrpass0._subpasses.setup(1,1);
-    rdrpass0._subpasses.add(app.win, app.data, att0, nullptr);
-    rdrpass0.setSwpChainHijack(0, 0); 
-    rdrpass0.create(app.data, app.win);
-    rdrpass0.fillBeginInfo(app.win);
-
-    //-------------Swapchain---------------
-    swpchain.create(app.data, app.win, rdrpass0);
-    //-----------Create Second rdrpass framebuffers----------
-    setupRdrpassFmbuffs(rdrpass, app.win, app.data, swpchain);
-    //----------Create Sampler--------------
-    defSampler.fillCrtInfo(app.data);
-    defSampler.create(app.data);
-    //----------Create Frame----------------
-
-    frameData.win = &app.win;
-    frameData.swpchain = &swpchain;
-    frameData.cmdBuffPool = &gfxCmdPool;
-    frameData.rdrpass = &rdrpass0;
-    frame._data = frameData;
-    frame.create(app.data);
-    //------------Set Global Data-------------
-    GlobalData::cmdBuff = &frame.cmdBuff;
-    GlobalData::cmdBuffPool = &gfxCmdPool;
-    GlobalData::app         = &app;
-    //---------------Create Abstraction for gfx---------------------
-    GfxContext gtx;    //Context for MRT 
-    GfxContext gtxDef; //Final deferred rendering ctx 
-
-    Quad t;
-    Quad t0;
-    Cube cube;
-    SubdivQuad subQuad;
-
-    GfxObject  obj;
-    GfxObject  rendObj;
-
-    std::vector<VkDescriptorSetLayoutBinding> lytBindings;
-    lytBindings =  
-    {
-     {0, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-     {1, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-     {2, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
-    };
-  
-    gtx.setup({P0PATHVERT, P0PATHFRAG}, &rdrpass);
-    gtx.create();
-    gtxDef.setup({ P1PATHVERT, P1PATHFRAG }, &rdrpass0, &lytBindings);
-    gtxDef.create();
-
-    subQuad.init(10);
-    cube.init();
-    t.init(); 
-    t0.setInitSize({2.0f,2.0f});
-    t0.init();
-
-    obj.init(&gtx, &subQuad._data);
-    rendObj.init(&gtxDef, &t0);
-
-    struct {
+typedef struct {
         Matrix4<float> view;
         Matrix4<float> model;
         Matrix4<float> proj;
-    } unfData;
+} UnfData;
 
-    ImgView v0, v1, v2;
-    UniBuff unf;
-
-    unf.create(app.data, sizeof(unfData));
-    //-----------Loop------------
-    while (app.win.ptr->shouldLoop()) {
-
-       frame.submitInfo.waitSemaphoreCount = 1;
-       if (!frame.begin())
-           continue;
-
-        v0.dstr();
-        v1.dstr();
-        v2.dstr();
-
-       rdrpass.begin(frame.cmdBuff, frame.swpIndex);
-        
+void setViewPort(ui32 x, ui32 y, Frame& frame) {
        VkViewport viewport;
        VkRect2D   scissor;
        viewport.minDepth = 0.0f;
        viewport.maxDepth = 1.0f;
-       viewport.width =  Max<i32>(app.win.drawArea.x, 5);
-       viewport.height = Max<i32>(app.win.drawArea.y, 5);
-       viewport.y = Max<i32>(-0.5 * viewport.height + app.win.drawArea.y * 0.5, 0.0);
-       viewport.x = Max<i32>(-0.5 * viewport.width  + app.win.drawArea.x * 0.5, 0.0);
+       viewport.width =  Max<i32>(x, 5);
+       viewport.height = Max<i32>(y, 5);
+       viewport.y = Max<i32>(-0.5 * viewport.height + y * 0.5, 0.0);
+       viewport.x = Max<i32>(-0.5 * viewport.width  + x * 0.5, 0.0);
        scissor.extent =  {(ui32)viewport.width, (ui32)viewport.height};
        scissor.offset =  { (i32)viewport.x, (i32)viewport.y };
        vkCmdSetViewport(frame.cmdBuff.handle, 0, 1, &viewport);
        vkCmdSetScissor(frame.cmdBuff.handle, 0, 1, &scissor);
+}
+
+static void shadowRndPass(Renderpass& rdrpassShadow, Frame& frame, Vkapp& app, GfxContext& gtxShadow, 
+                          UnfData& unfData, UniBuff& unf, GfxObject& obj, VkQueue& q) {
+       rdrpassShadow.begin(frame.cmdBuff, frame.swpIndex);
+
+       setViewPort(app.win.drawArea.x, app.win.drawArea.y, frame);
+
+       gtxShadow.bind(frame.cmdBuff);
+
+       unfData.proj     = Matrix4<float>(1);
+       unfData.view     = Matrix4<float>(1);
+       unfData.model    = Matrix4<float>(1);
+
+       static float tme = 0.0f;
+       tme  += 0.1;
+
+
+       VkWriteDescriptorSet   wrt0{};
+       VkDescriptorBufferInfo buffInf{};
+
+       buffInf.offset = 0;
+       buffInf.range  = unf._buff._size;
+       buffInf.buffer = unf._buff.handle;
+
+       wrt0.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+       wrt0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+       wrt0.descriptorCount = 1; 
+       wrt0.pBufferInfo     = &buffInf;
+
+       unfData.proj     = Matrix4<float>(1);
+       unfData.view     = Matrix4<float>(1);
+       unfData.model    = Matrix4<float>(1);
+       PerspectiveMat(unfData.proj, 60, 1.0, 0.001, 100.0);
+       RotateMat(unfData.model, 90, { 1.0, 0.0, 0.0 });
+       TranslateMat(unfData.model, trans);
+       //LookAt(Matrix4<T> &matrix, 
+       //const Vector3<T> &camPos, 
+       //const Vector3<T> &targetPos, const Vector3<T> &upVec)
+       LookAt(unfData.view, 
+       { 1.0,-0.5, -0.6 }, trans, { 0.0, 1.0, 0.0 });
+       unf.wrt(&unfData);
+       obj._descSet.wrt(&wrt0, 0);  
+       obj.update(frame.cmdBuff);
+
+       obj.draw();
+        
+       rdrpassShadow.end(frame.cmdBuff);
+
+
+       frame.submitInfo.signalSemaphoreCount = 0;
+       vkEndCommandBuffer(frame.cmdBuff.handle);
+       vkQueueSubmit(frame.cmdBuff.queue, 1, &frame.submitInfo, frame.fenQueueSubmitComplete);
+       vkWaitForFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete, VK_TRUE, UINT64_MAX);
+       vkResetFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete);
+       vkResetCommandBuffer(frame.cmdBuff.handle, 0);
+       vkBeginCommandBuffer(frame.cmdBuff.handle, &frame.beginInfo);
+       frame.submitInfo.signalSemaphoreCount = 1;   
+       vkQueueWaitIdle(q); //I need timeline semaphores and generally sync abstraction
+}
+
+static void mrtRndPass(Renderpass& rdrpass, Frame& frame, Vkapp& app, GfxContext& gtx, UnfData& unfData, UniBuff& unf, GfxObject& obj, VkQueue& q) {
+       rdrpass.begin(frame.cmdBuff, frame.swpIndex);        
         
        gtx.bind(frame.cmdBuff);
+
+       setViewPort(frame._data.win->drawArea.x, frame._data.win->drawArea.y, frame);
 
         static float t = 0.0;
         t += 1.;
         unfData.proj     = Matrix4<float>(1);
         unfData.view     = Matrix4<float>(1);
         unfData.model    = Matrix4<float>(1);
-        fvec3 trans      = {0.0f, 0.0f, 0.0f};
         PerspectiveMat(unfData.proj, 60, 1.0, 0.001, 100.0);
         RotateMat(unfData.model, t, { 0.0, 1.0, 0.0 });
         TranslateMat(unfData.model, trans);
@@ -267,7 +206,7 @@ void Engine::run(Vkapp& app) {
        PerspectiveMat(unfData.proj, 60, 1.0, 0.001, 100.0);
        RotateMat(unfData.model, 90, { 1.0, 0.0, 0.0 });
        TranslateMat(unfData.model, trans);
-       LookAt(unfData.view, { 0.0,-0.0, 0.6 }, trans + fvec3{0.0,0.5,0.0}, { 0.0, 1.0, 0.0 });
+       LookAt(unfData.view, { 0.0,-0.0, 0.6 }, trans, { 0.0, 1.0, 0.0 });
        unf.wrt(&unfData);
        obj._descSet.wrt(&wrt0, 0);  
        obj.update(frame.cmdBuff);
@@ -276,7 +215,9 @@ void Engine::run(Vkapp& app) {
         
 
        rdrpass.end(frame.cmdBuff);
+
        frame.submitInfo.signalSemaphoreCount = 0;
+       frame.submitInfo.waitSemaphoreCount   = 0; //We wait only for the first renderpss, the wait semaphore is img available
        vkEndCommandBuffer(frame.cmdBuff.handle);
        vkQueueSubmit(frame.cmdBuff.queue, 1, &frame.submitInfo, frame.fenQueueSubmitComplete);
        vkWaitForFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete, VK_TRUE, UINT64_MAX);
@@ -284,12 +225,17 @@ void Engine::run(Vkapp& app) {
        vkResetCommandBuffer(frame.cmdBuff.handle, 0);
        vkBeginCommandBuffer(frame.cmdBuff.handle, &frame.beginInfo);
        frame.submitInfo.signalSemaphoreCount = 1;   
-       vkQueueWaitIdle(q); //I need timeline semaphores and generally sync abstraction
-       
-       rdrpass0.begin(frame.cmdBuff, frame.swpIndex);
-      
-       vkCmdSetViewport(frame.cmdBuff.handle, 0, 1, &viewport);
-       vkCmdSetScissor(frame.cmdBuff.handle, 0, 1, &scissor);
+       vkQueueWaitIdle(q); 
+
+}
+
+static void defRndPass(Renderpass& rdrpassDef, Renderpass& rdrpass, 
+                       Frame& frame, Vkapp& app, GfxContext& gtxDef, 
+                       UnfData& unfData, UniBuff& unf, GfxObject& obj, VkQueue& q,
+                       GfxObject& rendObj, ImgView& v0, ImgView& v1, ImgView& v2, Sampler& defSampler) {
+       rdrpassDef.begin(frame.cmdBuff, frame.swpIndex);
+ 
+       setViewPort(app.win.drawArea.x, app.win.drawArea.y, frame);
        gtxDef.bind(frame.cmdBuff);
 
        //----------Update Descriptor set and uniform----------
@@ -324,10 +270,167 @@ void Engine::run(Vkapp& app) {
        rendObj.update(frame.cmdBuff);
        rendObj.draw();
 
-
-       rdrpass0.end(frame.cmdBuff); 
+       rdrpassDef.end(frame.cmdBuff); 
        
        frame.submitInfo.waitSemaphoreCount = 0;
+
+}
+
+
+
+
+void loadShaders(Vkapp& app, const char* vertPath, const char* fragPath, Shader& vertS, Shader& fragS) {
+    std::vector<char> vsrc, fsrc;
+    io::readBin(vertPath, vsrc);
+    io::readBin(fragPath, fsrc);
+    vertS.fillCrtInfo((const ui32*)vsrc.data(), vsrc.size());
+    fragS.fillCrtInfo((const ui32*)fsrc.data(), fsrc.size()); 
+    vertS.create(app.data);
+    fragS.create(app.data);
+    vertS.fillStageCrtInfo(VK_SHADER_STAGE_VERTEX_BIT);
+    fragS.fillStageCrtInfo(VK_SHADER_STAGE_FRAGMENT_BIT);
+}
+
+void Engine::run(Vkapp& app) {
+    CmdBufferPool gfxCmdPool;
+    CmdBufferPool compCmdPool;
+    CmdBuff       compCmdBuff;
+    DescPool      descPool;
+    DescPool      descPool2;
+    Renderpass    rdrpass;
+    Renderpass    rdrpassDef;
+    Renderpass    rdrpassShadow;
+    Swapchain     swpchain;
+
+    Frame         frame;
+    FrameData     frameData;
+    Sampler       defSampler;
+    
+    //-----------Creating Resources----------- 
+
+
+    VulkanSupport::QueueFamIndices qfam;
+    VulkanSupport::findQueues(qfam, app.data);
+    gfxCmdPool.create(app.data, qfam.gfx );
+    compCmdPool.create(app.data, qfam.com);
+    VkQueue q = VulkanSupport::getQueue(app.data, offsetof(VulkanSupport::QueueFamIndices, gfx));
+    //-----------Setup and create renderpass----------- 
+    //Fist rdrpass MRT
+    AttachmentContainer att;
+    auto colAtt = att.add();
+
+    att.addDepth();
+    auto normalAtt     = att.add();
+    auto reflectionAtt = att.add();
+
+    rdrpass._subpasses.setup(1,4);
+    rdrpass._subpasses.add(app.win, app.data, att, nullptr);  //First subpass
+    colAtt->desc.format = VK_FORMAT_R8G8B8A8_UNORM;
+    rdrpass.setSwpChainHijack(-1, 0);
+    rdrpass.create(app.data, app.win);
+    rdrpass.fillBeginInfo(app.win);
+
+    //Second rdrpass for rendering
+    AttachmentContainer att0;
+    auto colAtt0 = att0.add();
+    colAtt0->desc.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; 
+    colAtt0->desc.format      = VK_FORMAT_R8G8B8A8_SRGB; 
+    rdrpassDef._subpasses.setup(1,1);
+    rdrpassDef._subpasses.add(app.win, app.data, att0, nullptr);
+    rdrpassDef.setSwpChainHijack(0, 0); 
+    rdrpassDef.create(app.data, app.win);
+    rdrpassDef.fillBeginInfo(app.win);
+
+    //Renderpass for shadowmap
+    AttachmentContainer att1;
+    Attachment* colAtt1 = att1.add();
+    att1.addDepth();
+    rdrpassShadow._subpasses.setup(1,2);
+    rdrpassShadow._subpasses.add(app.win, app.data, att1, nullptr);
+    rdrpassShadow.setSwpChainHijack(-1,0);
+    rdrpassShadow.create(app.data, app.win);
+    rdrpassShadow.fillBeginInfo(app.win);
+
+    //-------------Swapchain---------------
+    swpchain.create(app.data, app.win, rdrpassDef);
+    //-----------Create rdrpass framebuffers----------
+    setupRdrpassFmbuffs(rdrpass, app.win, app.data, swpchain);
+    setupRdrpassFmbuffs(rdrpassShadow, app.win, app.data, swpchain);
+    //----------Create Sampler--------------
+    defSampler.fillCrtInfo(app.data);
+    defSampler.create(app.data);
+    //----------Create Frame----------------
+
+    frameData.win = &app.win;
+    frameData.swpchain = &swpchain;
+    frameData.cmdBuffPool = &gfxCmdPool;
+    frameData.rdrpass = &rdrpassDef;
+    frame._data = frameData;
+    frame.create(app.data);
+    //------------Set Global Data-------------
+    GlobalData::cmdBuff = &frame.cmdBuff;
+    GlobalData::cmdBuffPool = &gfxCmdPool;
+    GlobalData::app         = &app;
+    //---------------Create Abstraction for gfx---------------------
+    GfxContext gtx;          //Context for MRT 
+    GfxContext gtxShadow;    //Context for Shadow Map
+
+    GfxContext gtxDef;       //Final deferred rendering ctx 
+
+    Quad t;
+    Quad t0;
+    Cube cube;
+    SubdivQuad subQuad;
+
+    GfxObject  obj;
+    GfxObject  rendObj;
+
+    std::vector<VkDescriptorSetLayoutBinding> lytBindings;
+    lytBindings =  
+    {
+     {0, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+     {1, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+     {2, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
+    };
+  
+    gtx.setup({P0PATHVERT, P0PATHFRAG}, &rdrpass);
+    gtx.create();
+    gtxDef.setup({ P1PATHVERT, P1PATHFRAG }, &rdrpassDef, &lytBindings);
+    gtxDef.create();
+    gtxShadow.setup({P2PATHVERT, P2PATHFRAG}, &rdrpassShadow);
+    gtxShadow.create();
+
+    subQuad.init(10);
+    cube.init();
+    t.init(); 
+    t0.setInitSize({2.0f,2.0f});
+    t0.init();
+
+    obj.init(&gtx, &subQuad._data);
+    rendObj.init(&gtxDef, &t0);
+
+
+    ImgView v0, v1, v2;
+    UniBuff unf;
+
+    UnfData unfData{};
+
+    unf.create(app.data, sizeof(unfData));
+    //-----------Loop------------
+    while (app.win.ptr->shouldLoop()) {
+
+       frame.submitInfo.waitSemaphoreCount = 1;
+       if (!frame.begin())
+           continue;
+
+        v0.dstr();
+        v1.dstr();
+        v2.dstr();
+
+       shadowRndPass(rdrpassShadow, frame, app, gtxShadow, unfData, unf, obj, q);
+       mrtRndPass(rdrpass, frame, app, gtx, unfData, unf, obj, q);
+       defRndPass(rdrpassDef, rdrpass, frame, app, gtxDef, unfData, unf, obj, q, rendObj, v0, v1, v2, defSampler);
+
        frame.end();
     }
     //-----------------------Clean Resources------------------
@@ -338,7 +441,7 @@ void Engine::run(Vkapp& app) {
 
     swpchain.dstr();
     rdrpass.dstr();
-    rdrpass0.dstr();
+    rdrpassDef.dstr();
 
 	gfxCmdPool.dstr();
 	compCmdPool.dstr();
