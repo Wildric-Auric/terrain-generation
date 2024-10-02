@@ -154,11 +154,13 @@ void SubdivQuad::init(const ui32 sub, const float res) {
             VertexData tmp;
             fvec3 l    = fvec3(base.x + i * step.x, base.y + j * step.y);
             //Add next row vertices
+
             if (i == 0) {
                 tmp.pos = l + fvec3(0, step.y, 0);
                 tmp.uv  = fvec2(i * 1.0/c, (j+1) * 1.0/c); 
                 _data.addVert(tmp); //up
             }
+
             tmp.pos = l + fvec3(step.x, step.y, 0);
             tmp.uv  = fvec2((i+1) * 1.0/c, (j+1) * 1.0/c); 
             _data.addVert(tmp); //up right

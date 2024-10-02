@@ -2,8 +2,8 @@
 #include "shared.h"
 #include "bcknd/io.h"
 
-static void loadShaders(Vkapp& app, const char* vertPath, const char* fragPath, Shader& vertS, Shader& fragS) {
-    std::vector<char> vsrc, fsrc;
+static void loadShaders(Vkapp& app, const char* vertPath, const char* fragPath, Shader& vertS, Shader& fragS, Shader* geomS = nullptr, const char* geomPath = nullptr) {
+    std::vector<char> vsrc, fsrc, gsrc;
     io::readBin(vertPath, vsrc);
     io::readBin(fragPath, fsrc);
     vertS.fillCrtInfo((const ui32*)vsrc.data(), vsrc.size());
@@ -12,20 +12,35 @@ static void loadShaders(Vkapp& app, const char* vertPath, const char* fragPath, 
     fragS.create(app.data);
     vertS.fillStageCrtInfo(VK_SHADER_STAGE_VERTEX_BIT);
     fragS.fillStageCrtInfo(VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    if (geomS != nullptr) {
+        io::readBin(geomPath, gsrc);
+        geomS->fillCrtInfo((const ui32*)gsrc.data(), gsrc.size());
+        geomS->create(app.data);
+        geomS->fillStageCrtInfo(VK_SHADER_STAGE_GEOMETRY_BIT);
+    }
 }
 
 void GfxContext::setup(const ShaderLoc& loc, const Renderpass* r,const std::vector<VkDescriptorSetLayoutBinding>* descPoolBinding) {
 
-    loadShaders(*GlobalData::app, loc.vert.c_str(), loc.frag.c_str(), vertS, fragS);
+    if (!loc.geom.empty()) 
+        loadShaders(*GlobalData::app, loc.vert.c_str(), loc.frag.c_str(), vertS, fragS, &geomS, loc.geom.c_str());
+    else 
+        loadShaders(*GlobalData::app, loc.vert.c_str(), loc.frag.c_str(), vertS, fragS);
 
-    VkPipelineShaderStageCreateInfo* stages = new VkPipelineShaderStageCreateInfo[2] {
+    uchar n = 2 + !loc.geom.empty();
+    VkPipelineShaderStageCreateInfo* stages = new VkPipelineShaderStageCreateInfo[n] {
         vertS.stageCrtInfo,
-        fragS.stageCrtInfo
+        fragS.stageCrtInfo, 
     };
+
+    if (!loc.geom.empty()) {
+        stages[n-1] = geomS.stageCrtInfo;
+    }
     
     rdrpass = r;
     pipeline.fillCrtInfo(rdrpass->_subpasses._strideInfo[0].colLen);
-    pipeline.crtInfo.stageCount           = 2;
+    pipeline.crtInfo.stageCount           = n;
     pipeline.crtInfo.pStages              = stages;
     pipeline.crtInfo.renderPass           = rdrpass->handle;
     pipeline.layoutCrtInfo.setLayoutCount = 1;

@@ -1,4 +1,8 @@
+
 #include "engine.h"
+
+#include "ui.h"
+
 #include "bcknd/cmd_buffer.h"
 #include "bcknd/desc.h"
 #include "bcknd/frame.h"
@@ -9,10 +13,12 @@
 #include "shared.h"
 #include "shapes.h"
 #include "gfx.h"
+#include "cam.h"
 
-#define P0PATHVERT "../build/bin/mrt.vert.spv"
-#define P0PATHFRAG "../build/bin/mrt.frag.spv"
-#define P0PATHCOMP "../build/bin/def.comp.spv"
+
+#define P0PATHVERT "../build/bin/gpu_terrain.mrt.vert.spv"
+#define P0PATHFRAG "../build/bin/gpu_terrain.mrt.frag.spv"
+#define P0PATHGEOM "../build/bin/gpu_terrain.mrt.geom.spv"
 
 #define P1PATHVERT "../build/bin/def.vert.spv"
 #define P1PATHFRAG "../build/bin/def.frag.spv"
@@ -20,8 +26,19 @@
 #define P2PATHVERT "../build/bin/shadow.vert.spv"
 #define P2PATHFRAG "../build/bin/shadow.frag.spv"
 
+//Temporary
+Cam       defaultCam;
+Transform terData(nullptr);
+Transform cubeTrans(nullptr);
+GfxObject  terObj;
+GfxObject  cubeObj;
+GfxObject  rendObj;
 
+GfxContext gtx;          //Context for MRT 
+GfxContext gtxShadow;    //Context for Shadow Map
+GfxContext gtxDef;       //Final deferred rendering ctx 
 
+GfxContext gtxBase;
 
 //TODO::Refactor and integrate this to vkutil
 VkResult setupRdrpassFmbuffs(Renderpass& rdrpass, Window& win, VulkanData& _vkdata, Swapchain& swpchain) {
@@ -90,7 +107,7 @@ VkResult setupRdrpassFmbuffs(Renderpass& rdrpass, Window& win, VulkanData& _vkda
 
 //just to be legible
 
-fvec3 trans = {0.0f,0.5f,0.f};
+fvec3 trans = {0.0f,0.0f,0.f};
 
 typedef struct {
         Matrix4<float> view;
@@ -147,9 +164,6 @@ static void shadowRndPass(Renderpass& rdrpassShadow, Frame& frame, Vkapp& app, G
        PerspectiveMat(unfData.proj, 60, 1.0, 0.001, 100.0);
        RotateMat(unfData.model, 90, { 1.0, 0.0, 0.0 });
        TranslateMat(unfData.model, trans);
-       //LookAt(Matrix4<T> &matrix, 
-       //const Vector3<T> &camPos, 
-       //const Vector3<T> &targetPos, const Vector3<T> &upVec)
        LookAt(unfData.view, 
        { 1.0,-0.5, -0.6 }, trans, { 0.0, 1.0, 0.0 });
        unf.wrt(&unfData);
@@ -179,16 +193,6 @@ static void mrtRndPass(Renderpass& rdrpass, Frame& frame, Vkapp& app, GfxContext
 
        setViewPort(frame._data.win->drawArea.x, frame._data.win->drawArea.y, frame);
 
-        static float t = 0.0;
-        t += 1.;
-        unfData.proj     = Matrix4<float>(1);
-        unfData.view     = Matrix4<float>(1);
-        unfData.model    = Matrix4<float>(1);
-        PerspectiveMat(unfData.proj, 60, 1.0, 0.001, 100.0);
-        RotateMat(unfData.model, t, { 0.0, 1.0, 0.0 });
-        TranslateMat(unfData.model, trans);
-        LookAt(unfData.view, { 0.0,-1.0, 2.0 }, trans, { 0.0, 1.0, 0.0 });
-        unf.wrt(&unfData);
        VkWriteDescriptorSet   wrt0{};
        VkDescriptorBufferInfo buffInf{};
        buffInf.offset = 0;
@@ -200,20 +204,37 @@ static void mrtRndPass(Renderpass& rdrpass, Frame& frame, Vkapp& app, GfxContext
        wrt0.descriptorCount = 1; 
        wrt0.pBufferInfo     = &buffInf;
 
-       unfData.proj     = Matrix4<float>(1);
-       unfData.view     = Matrix4<float>(1);
-       unfData.model    = Matrix4<float>(1);
-       PerspectiveMat(unfData.proj, 60, 1.0, 0.001, 100.0);
-       RotateMat(unfData.model, 90, { 1.0, 0.0, 0.0 });
-       TranslateMat(unfData.model, trans);
-       LookAt(unfData.view, { 0.0,-0.0, 0.6 }, trans, { 0.0, 1.0, 0.0 });
+
+       defaultCam.setPerp(60, 1.0, 0.0001);
+       defaultCam.updateView(); 
+       terData.rot.x = 90.0;
+
+       unfData.model = terData.setModel();
+       unfData.proj = defaultCam._proj;
+       unfData.view = defaultCam._view;
+
        unf.wrt(&unfData);
        obj._descSet.wrt(&wrt0, 0);  
        obj.update(frame.cmdBuff);
 
        obj.draw();
-        
 
+       gtxBase.bind(frame.cmdBuff);
+
+       cubeTrans.scale = {0.1,0.3,0.1};
+       unfData.model = cubeTrans.setModel();
+       unfData.proj  = defaultCam._proj;
+       unfData.view  = defaultCam._view;
+       static UniBuff unf0;
+
+       unf0.create(app.data,sizeof(unfData));
+       unf0.wrt(&unfData);
+       buffInf.buffer = unf0._buff.handle; 
+       cubeObj._descSet.wrt(&wrt0, 0);
+       cubeObj.update(frame.cmdBuff);
+
+       cubeObj.draw();
+    
        rdrpass.end(frame.cmdBuff);
 
        frame.submitInfo.signalSemaphoreCount = 0;
@@ -227,12 +248,15 @@ static void mrtRndPass(Renderpass& rdrpass, Frame& frame, Vkapp& app, GfxContext
        frame.submitInfo.signalSemaphoreCount = 1;   
        vkQueueWaitIdle(q); 
 
+       unf0.dstr();     
+
 }
 
 static void defRndPass(Renderpass& rdrpassDef, Renderpass& rdrpass, 
                        Frame& frame, Vkapp& app, GfxContext& gtxDef, 
                        UnfData& unfData, UniBuff& unf, GfxObject& obj, VkQueue& q,
                        GfxObject& rendObj, ImgView& v0, ImgView& v1, ImgView& v2, Sampler& defSampler) {
+
        rdrpassDef.begin(frame.cmdBuff, frame.swpIndex);
  
        setViewPort(app.win.drawArea.x, app.win.drawArea.y, frame);
@@ -270,6 +294,10 @@ static void defRndPass(Renderpass& rdrpassDef, Renderpass& rdrpass,
        rendObj.update(frame.cmdBuff);
        rendObj.draw();
 
+       UIBegin(); 
+       UIRender();
+       UIEnd();
+
        rdrpassDef.end(frame.cmdBuff); 
        
        frame.submitInfo.waitSemaphoreCount = 0;
@@ -279,19 +307,12 @@ static void defRndPass(Renderpass& rdrpassDef, Renderpass& rdrpass,
 
 
 
-void loadShaders(Vkapp& app, const char* vertPath, const char* fragPath, Shader& vertS, Shader& fragS) {
-    std::vector<char> vsrc, fsrc;
-    io::readBin(vertPath, vsrc);
-    io::readBin(fragPath, fsrc);
-    vertS.fillCrtInfo((const ui32*)vsrc.data(), vsrc.size());
-    fragS.fillCrtInfo((const ui32*)fsrc.data(), fsrc.size()); 
-    vertS.create(app.data);
-    fragS.create(app.data);
-    vertS.fillStageCrtInfo(VK_SHADER_STAGE_VERTEX_BIT);
-    fragS.fillStageCrtInfo(VK_SHADER_STAGE_FRAGMENT_BIT);
-}
 
 void Engine::run(Vkapp& app) {
+    //Set default values
+    defaultCam.trans.pos = {0., 0.25, 1.15};
+    defaultCam.trans.rot = {28.05, 0., 0.0};
+    //------------------
     CmdBufferPool gfxCmdPool;
     CmdBufferPool compCmdPool;
     CmdBuff       compCmdBuff;
@@ -318,14 +339,18 @@ void Engine::run(Vkapp& app) {
     //Fist rdrpass MRT
     AttachmentContainer att;
     auto colAtt = att.add();
+    colAtt->desc.format = VK_FORMAT_R16G16B16A16_SNORM;
 
     att.addDepth();
     auto normalAtt     = att.add();
+    normalAtt->desc.format = VK_FORMAT_R16G16B16A16_SNORM;
     auto reflectionAtt = att.add();
+
+
+
 
     rdrpass._subpasses.setup(1,4);
     rdrpass._subpasses.add(app.win, app.data, att, nullptr);  //First subpass
-    colAtt->desc.format = VK_FORMAT_R8G8B8A8_UNORM;
     rdrpass.setSwpChainHijack(-1, 0);
     rdrpass.create(app.data, app.win);
     rdrpass.fillBeginInfo(app.win);
@@ -372,18 +397,11 @@ void Engine::run(Vkapp& app) {
     GlobalData::cmdBuffPool = &gfxCmdPool;
     GlobalData::app         = &app;
     //---------------Create Abstraction for gfx---------------------
-    GfxContext gtx;          //Context for MRT 
-    GfxContext gtxShadow;    //Context for Shadow Map
-
-    GfxContext gtxDef;       //Final deferred rendering ctx 
 
     Quad t;
     Quad t0;
     Cube cube;
     SubdivQuad subQuad;
-
-    GfxObject  obj;
-    GfxObject  rendObj;
 
     std::vector<VkDescriptorSetLayoutBinding> lytBindings;
     lytBindings =  
@@ -393,12 +411,16 @@ void Engine::run(Vkapp& app) {
      {2, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
     };
   
-    gtx.setup({P0PATHVERT, P0PATHFRAG}, &rdrpass);
+    gtx.setup({P0PATHVERT, P0PATHFRAG, P0PATHGEOM}, &rdrpass);
+    //gtx.pipeline.rasterState.polygonMode = VK_POLYGON_MODE_LINE;
     gtx.create();
     gtxDef.setup({ P1PATHVERT, P1PATHFRAG }, &rdrpassDef, &lytBindings);
     gtxDef.create();
     gtxShadow.setup({P2PATHVERT, P2PATHFRAG}, &rdrpassShadow);
     gtxShadow.create();
+
+    gtxBase.setup({"../build/bin/base.mrt.vert.spv","../build/bin/base.mrt.frag.spv"}, &rdrpass);
+    gtxBase.create();
 
     subQuad.init(10);
     cube.init();
@@ -406,7 +428,8 @@ void Engine::run(Vkapp& app) {
     t0.setInitSize({2.0f,2.0f});
     t0.init();
 
-    obj.init(&gtx, &subQuad._data);
+    terObj.init(&gtx, &subQuad._data);
+    cubeObj.init(&gtx, &cube);
     rendObj.init(&gtxDef, &t0);
 
 
@@ -416,6 +439,37 @@ void Engine::run(Vkapp& app) {
     UnfData unfData{};
 
     unf.create(app.data, sizeof(unfData));
+    //------------Init ImGui------------------
+    DescPool imguiPool;
+    imguiPool._lytBindings = {
+        { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
+    };
+    imguiPool.create(app.data);
+
+    VkExtent2D imageExtent;
+    VulkanSupport::SwpchainCap spec;  
+    VulkanSupport::getSwapchaincap(app.data, spec);
+    swpchain.chooseExtent(app.win, spec.cap, &imageExtent);
+    VkSurfaceFormatKHR srfcFmt = spec.srfcFormats[VulkanSupport::selSrfcFmt(spec)];
+    ui32 imgCount = spec.cap.minImageCount + 1;
+    if (spec.cap.maxImageCount > 0 && imgCount > spec.cap.maxImageCount) {
+        imgCount = spec.cap.maxImageCount;
+    }
+    
+    ImGui_ImplVulkan_InitInfo info{};
+    info.Instance  = app.data.inst;
+    info.PhysicalDevice = app.data.phyDvc;
+    info.Device = app.data.dvc;
+    info.Queue  = q;
+    info.Subpass = 0;
+    info.Allocator = nullptr;
+    info.ImageCount = imgCount;
+    info.MSAASamples    = VK_SAMPLE_COUNT_1_BIT;
+    info.MinImageCount  = spec.cap.minImageCount;
+    info.RenderPass     = rdrpassDef.handle;
+    info.DescriptorPool = imguiPool.handle;
+   
+    Init(&info);
     //-----------Loop------------
     while (app.win.ptr->shouldLoop()) {
 
@@ -427,9 +481,9 @@ void Engine::run(Vkapp& app) {
         v1.dstr();
         v2.dstr();
 
-       shadowRndPass(rdrpassShadow, frame, app, gtxShadow, unfData, unf, obj, q);
-       mrtRndPass(rdrpass, frame, app, gtx, unfData, unf, obj, q);
-       defRndPass(rdrpassDef, rdrpass, frame, app, gtxDef, unfData, unf, obj, q, rendObj, v0, v1, v2, defSampler);
+       shadowRndPass(rdrpassShadow, frame, app, gtxShadow, unfData, unf, terObj, q);
+       mrtRndPass(rdrpass, frame, app, gtx, unfData, unf, terObj, q);
+       defRndPass(rdrpassDef, rdrpass, frame, app, gtxDef, unfData, unf, terObj, q, rendObj, v0, v1, v2, defSampler);
 
        frame.end();
     }

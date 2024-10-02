@@ -16,7 +16,7 @@ class Cam {
         void lookat(const fvec3& targetPosition);
 
         void setOrtho(const Rect& r, float near = 0.0f, float far = 1.0f);
-        void setPerp(float degreeFovY, float aspect, float near = 0.0f, float far = 100.0f);
+        void setPerp(float degreeFovY, float aspect, float near = 0.001f, float far = 100.0f);
 
         void setPosition(const fvec3& newPos);
         void setRotation(const fvec3& newRot);

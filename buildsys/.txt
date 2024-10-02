@@ -1,0 +1,5 @@
+-mb   Minimal build build without shaders
+-scp  Compile Shaders
+-r    Run
+-b    Build and build shaders
+-br   -b + r

@@ -15,7 +15,8 @@ workspace "vkUtilExample"
 		"C:/VulkanSDK/1.3.283.0/include/",
 		"src/",
         "vendor/LWmath/",
-        "vendor/"
+        "vendor/",
+        "vendor/imgui/"
 	}
 	files {
 		"src/**.cpp",
@@ -25,7 +26,9 @@ workspace "vkUtilExample"
 		"src/**",
 		"src/**",
         "vendor/nwin/*.cpp",
-        "vendor/nwin/*.h"
+        "vendor/nwin/*.h",
+        "vendor/imgui/*.cpp",
+        "vendor/imgui/backends/*.cpp"
 	}
 	links {
         "dwmapi.lib",

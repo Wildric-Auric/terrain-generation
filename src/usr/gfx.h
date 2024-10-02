@@ -10,8 +10,8 @@
 struct ShaderLoc {
     std::string vert;
     std::string frag;
-    std::string tess;
     std::string geom;
+    std::string tess;
 };
 
 class GfxContext {
@@ -26,7 +26,7 @@ class GfxContext {
     DescPool          descPool;
     const Renderpass* rdrpass;
     //TODO::Remove this from here
-    Shader vertS, fragS;
+    Shader vertS, fragS, geomS;
 };
 
 class GfxObject {
