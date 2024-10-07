@@ -7,7 +7,6 @@
 #include "bcknd/desc.h"
 #include "bcknd/frame.h"
 #include "bcknd/support.h"
-#include "bcknd/io.h"
 #include "bcknd/params.h"
 
 #include "shared.h"
@@ -27,6 +26,7 @@
 #define P2PATHFRAG "../build/bin/shadow.frag.spv"
 
 //Temporary
+float FOV = 60.0;
 Cam       defaultCam;
 Transform terData(nullptr);
 Transform cubeTrans(nullptr);
@@ -205,7 +205,15 @@ static void mrtRndPass(Renderpass& rdrpass, Frame& frame, Vkapp& app, GfxContext
        wrt0.pBufferInfo     = &buffInf;
 
 
-       defaultCam.setPerp(60, 1.0, 0.0001);
+       defaultCam.setPerp(FOV, 1.0, 0.0001);
+//       Rect r{};
+//       r.buttom = -1.0;
+//       r.top    = 1.0;
+//       r.right  = 1.0;
+//       r.left   = -1.0;
+//       defaultCam.setOrtho(r, 0.00, 100.0);
+//       defaultCam.updateView(); 
+//       terData.rot.x = 90.0;
        defaultCam.updateView(); 
        terData.rot.x = 90.0;
 
@@ -329,7 +337,6 @@ void Engine::run(Vkapp& app) {
     
     //-----------Creating Resources----------- 
 
-
     VulkanSupport::QueueFamIndices qfam;
     VulkanSupport::findQueues(qfam, app.data);
     gfxCmdPool.create(app.data, qfam.gfx );
@@ -339,13 +346,14 @@ void Engine::run(Vkapp& app) {
     //Fist rdrpass MRT
     AttachmentContainer att;
     auto colAtt = att.add();
-    colAtt->desc.format = VK_FORMAT_R16G16B16A16_SNORM;
-
+    colAtt->desc.format = VK_FORMAT_R16G16B16A16_SFLOAT;
     att.addDepth();
-    auto normalAtt     = att.add();
-    normalAtt->desc.format = VK_FORMAT_R16G16B16A16_SNORM;
-    auto reflectionAtt = att.add();
 
+    auto normalAtt         = att.add();
+    normalAtt->desc.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+    auto posAtt = att.add();
+    posAtt->desc.format    = VK_FORMAT_R16G16B16A16_SFLOAT;
 
 
 
@@ -396,6 +404,9 @@ void Engine::run(Vkapp& app) {
     GlobalData::cmdBuff = &frame.cmdBuff;
     GlobalData::cmdBuffPool = &gfxCmdPool;
     GlobalData::app         = &app;
+    
+
+
     //---------------Create Abstraction for gfx---------------------
 
     Quad t;

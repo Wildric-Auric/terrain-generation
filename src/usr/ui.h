@@ -42,6 +42,7 @@ inline void Init(ImGui_ImplVulkan_InitInfo* info) {
     // Setup Platform/Renderer backends
     ImGui_ImplWin32_Init((HWND)win->_getHandle());
     ImGui_ImplVulkan_Init(info);
+
     win->setWndProcCallback((void*)&imguiProcCallback);
 }
 
@@ -51,8 +52,10 @@ inline void UIBegin() {
      ImGui::NewFrame();
 }
 
+extern float FOV;
 inline void UIRender() {   
     ImGui::Begin("inspector");
+    ImGui::DragFloat("FOV", &FOV, 0.05);
     ImGui::DragFloat3("Camera Position", &defaultCam.trans.pos.x, 0.05);
     ImGui::DragFloat3("Camera Rotation", &defaultCam.trans.rot.x, 0.05);
     ImGui::End();

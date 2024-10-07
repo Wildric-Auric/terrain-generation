@@ -6,7 +6,6 @@
 #include "bcknd/frame.h"
 
 #include "shapes.h"
-
 struct ShaderLoc {
     std::string vert;
     std::string frag;
