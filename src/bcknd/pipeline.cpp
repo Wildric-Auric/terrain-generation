@@ -4,6 +4,16 @@
 
 VkResult Pipeline::create(const VulkanData& vkdata) {
     _vkdata = vkdata;
+
+    _vinf.setAttribs(sinf);
+    _vinf.setBinding(0);
+
+    arch temp0;
+    vrtxInputState.pVertexAttributeDescriptions    = _vinf.getAttribs(&temp0);
+    vrtxInputState.vertexAttributeDescriptionCount = temp0;
+    vrtxInputState.pVertexBindingDescriptions      = _vinf.getBinding();
+    vrtxInputState.vertexBindingDescriptionCount   = 1;
+
     vkCreatePipelineLayout(vkdata.dvc, &layoutCrtInfo, nullptr, &_layout);
     crtInfo.layout = _layout;
     return vkCreateGraphicsPipelines(vkdata.dvc, VK_NULL_HANDLE, 1, &crtInfo, nullptr, &handle); 
@@ -73,13 +83,6 @@ VkGraphicsPipelineCreateInfo& Pipeline::fillCrtInfo(arch attNum) {
    
     layoutCrtInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layoutCrtInfo.setLayoutCount = 0;
-
-    //TODO::Maybe not have default? 
-    arch temp0;
-    vrtxInputState.pVertexAttributeDescriptions    = Vertex::setAttribs(&temp0);
-    vrtxInputState.vertexAttributeDescriptionCount = temp0;
-    vrtxInputState.pVertexBindingDescriptions      = Vertex::setBindings(&temp0);
-    vrtxInputState.vertexBindingDescriptionCount   = temp0;
 
     //---
     crtInfo.sType      = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;

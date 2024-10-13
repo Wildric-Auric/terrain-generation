@@ -389,7 +389,7 @@ void Renderpass::dstrRes() {
 void Frame::end() {
         VkResult res;
         vkEndCommandBuffer(cmdBuff.handle);
-        vkQueueSubmit(cmdBuff.queue, 1, &submitInfo ,fenQueueSubmitComplete);
+        vkQueueSubmit(cmdBuff.queue, 1, &submitInfo ,fenQueueSubmitComplete.handle);
         res = vkQueuePresentKHR(preQueue, &preInfo);
         
         if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR || _data.win->consumesignal()) {
@@ -509,9 +509,13 @@ VkResult Frame::create(const VulkanData& vkdata) {
     semCrtInfo.pNext = nullptr;
     semCrtInfo.flags = NULL;
 
-    VkResult res = vkCreateFence(_vkdata.dvc, &fenCrtInfo, nullptr, &fenQueueSubmitComplete);
-    VkResult res0 = vkCreateSemaphore(_vkdata.dvc, &semCrtInfo, nullptr, &semImgAvailable);
-    VkResult res1 = vkCreateSemaphore(_vkdata.dvc, &semCrtInfo, nullptr, &semRdrFinished);
+    fenQueueSubmitComplete.fillCrtInfo(_vkdata, 1);
+    semImgAvailable.fillCrtInfo(_vkdata, 1);
+    semRdrFinished.fillCrtInfo(_vkdata, 1);
+
+    VkResult res =  fenQueueSubmitComplete.create();//vkCreateFence(_vkdata.dvc, &fenCrtInfo, nullptr, &fenQueueSubmitComplete);
+    VkResult res0 = semImgAvailable.create();       //vkCreateSemaphore(_vkdata.dvc, &semCrtInfo, nullptr, &semImgAvailable);
+    VkResult res1 = semRdrFinished.create();        //vkCreateSemaphore(_vkdata.dvc, &semCrtInfo, nullptr, &semRdrFinished);
 
     if (res != VK_SUCCESS) {
         return res; 
@@ -539,17 +543,17 @@ VkResult Frame::create(const VulkanData& vkdata) {
     submitInfo.pCommandBuffers      = &cmdBuff.handle;
     submitInfo.waitSemaphoreCount   = 1;
 
-    submitInfo.pWaitSemaphores    = &semImgAvailable;
+    submitInfo.pWaitSemaphores    = &semImgAvailable.handle;
     submitInfo.pWaitDstStageMask  = &waitDstStage;
     submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores    = &semRdrFinished;
+    submitInfo.pSignalSemaphores    = &semRdrFinished.handle;
 
     preInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     preInfo.swapchainCount     = 1;
     preInfo.pSwapchains        = &_data.swpchain->handle;
     preInfo.pImageIndices      = &swpIndex;
     preInfo.waitSemaphoreCount = 1;
-    preInfo.pWaitSemaphores    = &semRdrFinished;
+    preInfo.pWaitSemaphores    = &semRdrFinished.handle;
 
     
     VulkanSupport::QueueFamIndices qfam; VulkanSupport::findQueues(qfam, _vkdata);
@@ -565,12 +569,10 @@ void Frame::dstr() {
     vkQueueWaitIdle(gfxQueue); 
     _data.cmdBuffPool->freeCmdBuff(cmdBuff);
 
-    vkDestroyFence(_vkdata.dvc, fenQueueSubmitComplete, nullptr);
-    vkDestroySemaphore(_vkdata.dvc, semImgAvailable, nullptr);
-    vkDestroySemaphore(_vkdata.dvc, semRdrFinished, nullptr);
-    
+    semImgAvailable.dstr();
+    semRdrFinished.dstr();
+    fenQueueSubmitComplete.dstr();
 }
-
 
 void Frame::processSwpchainRec() {
     NWin::Vec2 size;
@@ -595,14 +597,15 @@ bool Frame::begin() {
         VkResult res;
         Frame& frame = *this;
         VulkanData& data = _vkdata;
-        vkWaitForFences(data.dvc, 1, &frame.fenQueueSubmitComplete, VK_TRUE, UINT64_MAX);
-        res = vkAcquireNextImageKHR(data.dvc, _data.swpchain->handle, UINT64_MAX, frame.semImgAvailable, VK_NULL_HANDLE, &swpIndex);
+        
+        fenQueueSubmitComplete.wait();
+        res = vkAcquireNextImageKHR(data.dvc, _data.swpchain->handle, UINT64_MAX, frame.semImgAvailable.handle, VK_NULL_HANDLE, &swpIndex);
         //Swapchain recreation
         if (res == VK_ERROR_OUT_OF_DATE_KHR) { 
             processSwpchainRec();
             return 0;
         }
-        vkResetFences(data.dvc, 1, &frame.fenQueueSubmitComplete);
+        vkResetFences(data.dvc, 1, &frame.fenQueueSubmitComplete.handle);
         vkResetCommandBuffer(cmdBuff.handle, 0);
         vkBeginCommandBuffer(cmdBuff.handle, &beginInfo);
         return 1;

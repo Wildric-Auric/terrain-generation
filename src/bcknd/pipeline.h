@@ -2,6 +2,7 @@
 
 #include "vkdecl.h"
 #include "globals.h"
+#include "vertex.h"
 
 class Shader {
     public:
@@ -19,6 +20,7 @@ class Shader {
 
 class Pipeline {
     public:
+
     VkResult create(const VulkanData&);
     VkGraphicsPipelineCreateInfo& fillCrtInfo(arch attNum);
     void dstr();
@@ -27,6 +29,13 @@ class Pipeline {
     VulkanData _vkdata;
     VkPipelineLayout _layout;
     VkPipeline handle;
+
+    std::vector<VertexAttributeInfo > sinf = {
+         {  VkFormat::VK_FORMAT_R32G32B32_SFLOAT, sizeof(float) * 3},
+         {  VkFormat::VK_FORMAT_R32G32_SFLOAT,    sizeof(float) * 2}
+    };
+    VertexInfo _vinf = { sinf,0 } ;
+
 
     VkPipelineVertexInputStateCreateInfo   vrtxInputState{};
     VkPipelineInputAssemblyStateCreateInfo inputAsmState{};

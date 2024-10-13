@@ -6,10 +6,6 @@
 #include "params.h"
 #include <string>
 
-//#include <vulkan/vk_enum_string_helper.h>
-
-
-
 Window* Window::cur = nullptr;
 void Window::rszcallback(NWin::winHandle handle, NWin::Vec2 size) {
     Window::cur->_rszsignal = true; 
@@ -44,6 +40,7 @@ i32 Vkapp::init() {
 VkResult createLogicalDevice(VulkanData& data, bool validationEnabled) {
     VkDeviceCreateInfo crtInfo{};
     VkPhysicalDeviceFeatures feat{};
+
     std::vector<const char*> ext = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     std::vector<VkDeviceQueueCreateInfo> queueFamCrtInfo;
     std::vector<ui32> lut;
@@ -82,8 +79,13 @@ VkResult createLogicalDevice(VulkanData& data, bool validationEnabled) {
         crtInfo.ppEnabledLayerNames = &validationLayer;
     }
 
-    crtInfo.enabledExtensionCount = ext.size();
+    VkPhysicalDeviceTimelineSemaphoreFeaturesKHR enabledTimelineSemaphoreFeaturesKHR{};
+	ext.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
+    enabledTimelineSemaphoreFeaturesKHR.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES_KHR;
+	enabledTimelineSemaphoreFeaturesKHR.timelineSemaphore = VK_TRUE;
+    crtInfo.enabledExtensionCount   = ext.size();
     crtInfo.ppEnabledExtensionNames = ext.data();
+    crtInfo.pNext = &enabledTimelineSemaphoreFeaturesKHR;
 
     return vkCreateDevice(data.phyDvc, &crtInfo, nullptr, &data.dvc);
 }
@@ -100,7 +102,7 @@ int Vkapp::initVkData() {
     appInfo.pNext = nullptr;
     appInfo.pApplicationName = std::to_string((arch)this).c_str();
     appInfo.pEngineName      = "No Engine";
-    appInfo.apiVersion       =  VK_API_VERSION_1_0;
+    appInfo.apiVersion       =  VK_API_VERSION_1_2;
     appInfo.engineVersion     = VK_MAKE_VERSION(1,0,0);
 
     crtInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;

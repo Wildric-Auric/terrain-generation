@@ -6,24 +6,41 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 
-struct VertexData {
-    fvec3 pos;
-    fvec2 uv;
+
+struct VertexAttributeInfo {
+    VkFormat fmt;
+    ui32     byteSize;
+};
+
+class VertexInfo {
+    public: 
+
+        VkVertexInputBindingDescription   binding;
+        std::vector<VkVertexInputAttributeDescription> attribs;
+
+        VertexInfo(const std::vector<VertexAttributeInfo >&, uchar binding);
+
+        const VkVertexInputBindingDescription*   getBinding();
+        const VkVertexInputAttributeDescription* getAttribs(arch* outSize  = nullptr);
+        
+        const VkVertexInputBindingDescription*   setBinding(uchar binding);
+        const VkVertexInputAttributeDescription* setAttribs(const std::vector<VertexAttributeInfo>&, arch* outSize  = nullptr);
 };
 
 class Vertex {
     public:
-    
-        VertexData data;
+    std::vector<char> bytes;
 
-        static std::vector<VkVertexInputBindingDescription>   bindings;
-        static std::vector<VkVertexInputAttributeDescription> attribs;
+    inline Vertex() {};
+    template<typename T>
+    inline Vertex(std::initializer_list<T> l) {
+        arch byteSize = l.size() * sizeof(T);
+        bytes.resize(byteSize);
+        memcpy(&bytes[0], l.begin(), byteSize);
+    };
 
-        static const VkVertexInputBindingDescription*   getBindings(arch* outSize = nullptr);
-        static const VkVertexInputAttributeDescription* getAttribs(arch* outSize  = nullptr);
-        
-        static const VkVertexInputBindingDescription*   setBindings(arch* outSize = nullptr);
-        static const VkVertexInputAttributeDescription* setAttribs(arch* outSize  = nullptr);
+    void  wrt(VertexInfo&,  void*  input);
+    void  read(VertexInfo&, void* output, ui32 offset);
 };
 
 

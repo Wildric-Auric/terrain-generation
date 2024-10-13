@@ -1,9 +1,12 @@
 #pragma once
 
 #include "vkdecl.h"
+#include "sync.h"
+#include "vkimg.h"
+
 #include "vulkan/vulkan_core.h"
 #include <vulkan/vulkan.h>
-#include "vkimg.h"
+
 
 struct AttachmentData {
     Img     image;
@@ -136,9 +139,9 @@ class Frame {
         bool begin();
         void end();
 
-        VkFence      fenQueueSubmitComplete; //Signaled by  vkQueueSubmit()
-        VkSemaphore  semImgAvailable;        //Signaled by vkAcquireNext...
-        VkSemaphore  semRdrFinished;         //Signaled by vkQueueSubmit()
+        Fence     fenQueueSubmitComplete; //Signaled by  vkQueueSubmit()
+        Semaphore semImgAvailable;        //Signaled by vkAcquireNext...
+        Semaphore semRdrFinished;         //Signaled by vkQueueSubmit()
         VulkanData   _vkdata; 
         FrameData   _data;
         
