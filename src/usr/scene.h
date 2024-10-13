@@ -1,10 +1,20 @@
 #pragma once 
+#include <unordered_map>
 #include <list>
 
-#include "gfx.h" 
+#include "obj/obj.h" 
+#include "gfx.h"
 
-class Scene {
+class Scene {    
+    public:
+    std::unordered_map<GfxContext*, std::list<Obj>> objs;
 
-    std::list<GfxObject> objs;
+    Obj& push(GfxContext*);
+    void pop(GfxContext*); 
 
+    GfxContext* push();
+    void        popCtx(GfxContext*);
+
+    void init();
+    void update();
 };

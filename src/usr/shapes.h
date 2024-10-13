@@ -2,7 +2,7 @@
 
 #include "bcknd/vertex.h"
 
-#define INHERIT_SHAPE_INIT      \
+#define INHERIT_SHAPE_INIT \
     void init() override;  \
 
 #define INHERIT_SHAPE      \
@@ -37,11 +37,11 @@ class Cube : public Shape {
 
 class Mesh : public Shape {
     public:
-    std::vector<VertexData> vertices;
+    std::vector<float> vertices;
     std::vector<ui32>       indices;
-    void addVert(const VertexData&);
+    void addVert(const std::vector<float>&);
     void addInd(const ui32);
-    void add(const VertexData* const, const ui32 i);
+    void add(const std::vector<float>* const, const ui32 i);
     void clean();
     INHERIT_SHAPE_INIT
 };

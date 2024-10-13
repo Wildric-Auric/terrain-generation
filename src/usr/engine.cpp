@@ -14,6 +14,9 @@
 #include "gfx.h"
 #include "cam.h"
 
+#include "scene.h"
+#include "components/mesh_renderer.h"
+
 
 #define P0PATHVERT "../build/bin/gpu_terrain.mrt.vert.spv"
 #define P0PATHFRAG "../build/bin/gpu_terrain.mrt.frag.spv"
@@ -28,7 +31,6 @@
 //Temporary
 float FOV = 60.0;
 Cam       defaultCam;
-Transform terData(nullptr);
 Transform cubeTrans(nullptr);
 GfxObject  terObj;
 GfxObject  cubeObj;
@@ -177,9 +179,9 @@ static void shadowRndPass(Renderpass& rdrpassShadow, Frame& frame, Vkapp& app, G
 
        frame.submitInfo.signalSemaphoreCount = 0;
        vkEndCommandBuffer(frame.cmdBuff.handle);
-       vkQueueSubmit(frame.cmdBuff.queue, 1, &frame.submitInfo, frame.fenQueueSubmitComplete);
-       vkWaitForFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete, VK_TRUE, UINT64_MAX);
-       vkResetFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete);
+       vkQueueSubmit(frame.cmdBuff.queue, 1, &frame.submitInfo, frame.fenQueueSubmitComplete.handle);
+       vkWaitForFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete.handle, VK_TRUE, UINT64_MAX);
+       vkResetFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete.handle);
        vkResetCommandBuffer(frame.cmdBuff.handle, 0);
        vkBeginCommandBuffer(frame.cmdBuff.handle, &frame.beginInfo);
        frame.submitInfo.signalSemaphoreCount = 1;   
@@ -187,6 +189,7 @@ static void shadowRndPass(Renderpass& rdrpassShadow, Frame& frame, Vkapp& app, G
 }
 
 static void mrtRndPass(Renderpass& rdrpass, Frame& frame, Vkapp& app, GfxContext& gtx, UnfData& unfData, UniBuff& unf, GfxObject& obj, VkQueue& q) {
+       //TODO::Pass Model matrix (transform)
        rdrpass.begin(frame.cmdBuff, frame.swpIndex);        
         
        gtx.bind(frame.cmdBuff);
@@ -215,9 +218,9 @@ static void mrtRndPass(Renderpass& rdrpass, Frame& frame, Vkapp& app, GfxContext
 //       defaultCam.updateView(); 
 //       terData.rot.x = 90.0;
        defaultCam.updateView(); 
-       terData.rot.x = 90.0;
-
-       unfData.model = terData.setModel();
+//       terData.rot.x = 90.0;
+//
+//       unfData.model = terData.setModel();
        unfData.proj = defaultCam._proj;
        unfData.view = defaultCam._view;
 
@@ -248,9 +251,9 @@ static void mrtRndPass(Renderpass& rdrpass, Frame& frame, Vkapp& app, GfxContext
        frame.submitInfo.signalSemaphoreCount = 0;
        frame.submitInfo.waitSemaphoreCount   = 0; //We wait only for the first renderpss, the wait semaphore is img available
        vkEndCommandBuffer(frame.cmdBuff.handle);
-       vkQueueSubmit(frame.cmdBuff.queue, 1, &frame.submitInfo, frame.fenQueueSubmitComplete);
-       vkWaitForFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete, VK_TRUE, UINT64_MAX);
-       vkResetFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete);
+       vkQueueSubmit(frame.cmdBuff.queue, 1, &frame.submitInfo, frame.fenQueueSubmitComplete.handle);
+       vkWaitForFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete.handle, VK_TRUE, UINT64_MAX);
+       vkResetFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete.handle);
        vkResetCommandBuffer(frame.cmdBuff.handle, 0);
        vkBeginCommandBuffer(frame.cmdBuff.handle, &frame.beginInfo);
        frame.submitInfo.signalSemaphoreCount = 1;   
@@ -260,9 +263,88 @@ static void mrtRndPass(Renderpass& rdrpass, Frame& frame, Vkapp& app, GfxContext
 
 }
 
+
+typedef struct {
+    UnfData unfData;
+    UniBuff unf;
+} CbkData;
+
+void terUpdate(Obj* obj) {
+    MeshRenderer* mr = obj->get<MeshRenderer>();
+    Transform*    tr = obj->get<Transform>();
+    auto& vkdat = mr->_gobj._gtx->rdrpass->_vkdata;
+    CbkData& dat = *(CbkData*)obj->updateCbkData;
+
+       VkWriteDescriptorSet   wrt0{};
+       VkDescriptorBufferInfo buffInf{};
+       buffInf.offset = 0;
+       buffInf.range  = dat.unf._buff._size;
+       buffInf.buffer = dat.unf._buff.handle;
+
+       wrt0.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+       wrt0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+       wrt0.descriptorCount = 1; 
+       wrt0.pBufferInfo     = &buffInf;
+
+       defaultCam.setPerp(FOV, 1.0, 0.0001);
+       defaultCam.updateView(); 
+       tr->rot.x = 90.0;
+
+       dat.unfData.model = tr->setModel();
+       dat.unfData.proj  = defaultCam._proj;
+       dat.unfData.view  = defaultCam._view;
+
+       dat.unf.wrt(&dat.unfData);
+       mr->_gobj._descSet.wrt(&wrt0, 0);  
+       mr->_gobj.update(*GlobalData::cmdBuff);
+
+       mr->_gobj.draw();
+}
+
+void terInit(Obj* obj) {
+    MeshRenderer* mr = obj->get<MeshRenderer>();
+    auto& vkdat = mr->_gobj._gtx->rdrpass->_vkdata;
+    CbkData& dat = *(CbkData*)obj->updateCbkData;
+    dat.unf.create( vkdat, sizeof(UnfData) );
+}
+
+static void mrtRndPass2(Scene& scene, Frame& frame, Vkapp& app, VkQueue& q) {
+
+       Renderpass& rdrpass = *scene.objs.begin()->first->rdrpass;
+       rdrpass.begin(frame.cmdBuff, frame.swpIndex);        
+       
+       setViewPort(frame._data.win->drawArea.x, frame._data.win->drawArea.y, frame);
+       scene.update();
+    
+       rdrpass.end(frame.cmdBuff);
+
+       frame.submitInfo.signalSemaphoreCount = 0;
+       vkEndCommandBuffer(frame.cmdBuff.handle);
+       vkQueueSubmit(frame.cmdBuff.queue, 1, &frame.submitInfo, frame.fenQueueSubmitComplete.handle);
+       vkWaitForFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete.handle, VK_TRUE, UINT64_MAX);
+       vkResetFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete.handle);
+       vkResetCommandBuffer(frame.cmdBuff.handle, 0);
+       vkBeginCommandBuffer(frame.cmdBuff.handle, &frame.beginInfo);
+       frame.submitInfo.signalSemaphoreCount = 1;   
+       vkQueueWaitIdle(q); //I need timeline semaphores and generally sync abstraction
+
+//       frame.submitInfo.signalSemaphoreCount = 0;
+//       frame.submitInfo.waitSemaphoreCount   = 0; //We wait only for the first renderpss, the wait semaphore is img available
+//       vkEndCommandBuffer(frame.cmdBuff.handle);
+//       vkQueueSubmit(frame.cmdBuff.queue, 1, &frame.submitInfo, frame.fenQueueSubmitComplete);
+//       vkWaitForFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete, VK_TRUE, UINT64_MAX);
+//       vkResetFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete);
+//       vkResetCommandBuffer(frame.cmdBuff.handle, 0);
+//       vkBeginCommandBuffer(frame.cmdBuff.handle, &frame.beginInfo);
+//       frame.submitInfo.signalSemaphoreCount = 1;   
+//       vkQueueWaitIdle(q); 
+
+
+}
+
 static void defRndPass(Renderpass& rdrpassDef, Renderpass& rdrpass, 
                        Frame& frame, Vkapp& app, GfxContext& gtxDef, 
-                       UnfData& unfData, UniBuff& unf, GfxObject& obj, VkQueue& q,
+                       VkQueue& q,
                        GfxObject& rendObj, ImgView& v0, ImgView& v1, ImgView& v2, Sampler& defSampler) {
 
        rdrpassDef.begin(frame.cmdBuff, frame.swpIndex);
@@ -422,11 +504,41 @@ void Engine::run(Vkapp& app) {
      {2, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
     };
   
-    gtx.setup({P0PATHVERT, P0PATHFRAG, P0PATHGEOM}, &rdrpass);
+    //gtx.setup({P0PATHVERT, P0PATHFRAG, P0PATHGEOM}, &rdrpass);
     //gtx.pipeline.rasterState.polygonMode = VK_POLYGON_MODE_LINE;
-    gtx.create();
+    //gtx.create();
+
     gtxDef.setup({ P1PATHVERT, P1PATHFRAG }, &rdrpassDef, &lytBindings);
     gtxDef.create();
+    
+    SubdivQuad sq;
+    sq.init(10);
+
+    Scene scene;
+    GfxContext* mrtGtx = scene.push();
+    mrtGtx->setup({ P0PATHVERT, P0PATHFRAG, P0PATHGEOM }, &rdrpass);
+    mrtGtx->pipeline.rasterState.cullMode = VK_CULL_MODE_NONE; //Temporary, i want to flip terrain
+    mrtGtx->create();
+
+    Obj& terrain     = scene.push(mrtGtx);
+    MeshRenderer* mr = terrain.add<MeshRenderer>();
+    terrain.add<Transform>();
+    mr->_gobj.init(mrtGtx,  &sq._data); 
+    CbkData d;
+    terrain.setInitCbk(terInit, &d);
+    terrain.setUpdateCkb(terUpdate, &d);
+
+    Obj& terrain2     = scene.push(mrtGtx);
+    mr = terrain2.add<MeshRenderer>();
+    terrain2.add<Transform>()->pos.x = 1.0;
+    terrain2.get<Transform>()->scale.x = -1.0f;
+    mr->_gobj.init(mrtGtx,  &sq._data); 
+    CbkData d2;
+    terrain2.setInitCbk(terInit, &d2);
+    terrain2.setUpdateCkb(terUpdate, &d2);
+
+    scene.init();
+
     gtxShadow.setup({P2PATHVERT, P2PATHFRAG}, &rdrpassShadow);
     gtxShadow.create();
 
@@ -439,17 +551,15 @@ void Engine::run(Vkapp& app) {
     t0.setInitSize({2.0f,2.0f});
     t0.init();
 
-    terObj.init(&gtx, &subQuad._data);
-    cubeObj.init(&gtx, &cube);
+    //terObj.init(&gtx, &subQuad._data);
+    //cubeObj.init(&gtx, &cube);
     rendObj.init(&gtxDef, &t0);
 
 
     ImgView v0, v1, v2;
-    UniBuff unf;
-
-    UnfData unfData{};
-
-    unf.create(app.data, sizeof(unfData));
+//    UniBuff unf;
+//    UnfData unfData{};
+//    unf.create(app.data, sizeof(unfData));
     //------------Init ImGui------------------
     DescPool imguiPool;
     imguiPool._lytBindings = {
@@ -492,16 +602,17 @@ void Engine::run(Vkapp& app) {
         v1.dstr();
         v2.dstr();
 
-       shadowRndPass(rdrpassShadow, frame, app, gtxShadow, unfData, unf, terObj, q);
-       mrtRndPass(rdrpass, frame, app, gtx, unfData, unf, terObj, q);
-       defRndPass(rdrpassDef, rdrpass, frame, app, gtxDef, unfData, unf, terObj, q, rendObj, v0, v1, v2, defSampler);
+       //shadowRndPass(rdrpassShadow, frame, app, gtxShadow, unfData, unf, terObj, q);
+       //mrtRndPass(rdrpass, frame, app, gtx, unfData, unf, terObj, q);
+       mrtRndPass2(scene, frame, app, q);
+       defRndPass(rdrpassDef, rdrpass, frame, app, gtxDef, q, rendObj, v0, v1, v2, defSampler);
 
        frame.end();
     }
     //-----------------------Clean Resources------------------
     frame.dstr();
 
-	gtx.dstr();
+	//gtx.dstr();
     gtxDef.dstr();
 
     swpchain.dstr();
@@ -515,7 +626,7 @@ void Engine::run(Vkapp& app) {
     t.destroy();
     t0.destroy();
     cube.destroy();
-    unf.dstr();
+    //unf.dstr();
     v0.dstr();
     v1.dstr();
     v2.dstr();

@@ -21,7 +21,7 @@ static void loadShaders(Vkapp& app, const char* vertPath, const char* fragPath, 
     }
 }
 
-void GfxContext::setup(const ShaderLoc& loc, const Renderpass* r,const std::vector<VkDescriptorSetLayoutBinding>* descPoolBinding) {
+void GfxContext::setup(const ShaderLoc& loc, Renderpass* r,const std::vector<VkDescriptorSetLayoutBinding>* descPoolBinding) {
 
     if (!loc.geom.empty()) 
         loadShaders(*GlobalData::app, loc.vert.c_str(), loc.frag.c_str(), vertS, fragS, &geomS, loc.geom.c_str());

@@ -18,6 +18,9 @@ class Component {
     inline Component(void* owner = nullptr) { _owner = owner;}
     inline const std::string& getType() { return _name;};
     inline ~Component() {};
+    
+    inline virtual void init()   {};
+    inline virtual void update() {};
 };
 
 class Transform : public Component {

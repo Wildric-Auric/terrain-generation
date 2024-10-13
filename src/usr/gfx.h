@@ -15,7 +15,7 @@ struct ShaderLoc {
 
 class GfxContext {
     public:
-    void setup(const ShaderLoc&, const Renderpass*, 
+    void setup(const ShaderLoc&, Renderpass*, 
                const std::vector<VkDescriptorSetLayoutBinding>* descPoolBinding = nullptr);
     void create();
     void dstr();
@@ -23,7 +23,7 @@ class GfxContext {
 
     Pipeline          pipeline; 
     DescPool          descPool;
-    const Renderpass* rdrpass;
+    Renderpass*       rdrpass;
     //TODO::Remove this from here
     Shader vertS, fragS, geomS;
 };
