@@ -16,6 +16,7 @@
 
 #include "scene.h"
 #include "components/mesh_renderer.h"
+#include "terrain.h"
 
 
 #define P0PATHVERT "../build/bin/gpu_terrain.mrt.vert.spv"
@@ -29,7 +30,16 @@
 #define P2PATHFRAG "../build/bin/shadow.frag.spv"
 
 //Temporary
+//struct LightData {
+//    fvec3 pos = fvec3(-0.4, 0.81, -0.2);
+//    fvec3 col = fvec3(1.0, 1.0, 1.0);
+//};
+
+UniBuff lightBuffer;
+
 float FOV = 60.0;
+
+LightData defaultLight;
 Cam       defaultCam;
 Transform cubeTrans(nullptr);
 GfxObject  terObj;
@@ -116,6 +126,10 @@ typedef struct {
         Matrix4<float> model;
         Matrix4<float> proj;
 } UnfData;
+typedef struct {
+    UnfData unfData;
+    UniBuff unf;
+} CbkData;
 
 void setViewPort(ui32 x, ui32 y, Frame& frame) {
        VkViewport viewport;
@@ -264,10 +278,6 @@ static void mrtRndPass(Renderpass& rdrpass, Frame& frame, Vkapp& app, GfxContext
 }
 
 
-typedef struct {
-    UnfData unfData;
-    UniBuff unf;
-} CbkData;
 
 void terUpdate(Obj* obj) {
     MeshRenderer* mr = obj->get<MeshRenderer>();
@@ -347,14 +357,14 @@ static void defRndPass(Renderpass& rdrpassDef, Renderpass& rdrpass,
                        VkQueue& q,
                        GfxObject& rendObj, ImgView& v0, ImgView& v1, ImgView& v2, Sampler& defSampler) {
 
-       rdrpassDef.begin(frame.cmdBuff, frame.swpIndex);
- 
+       rdrpassDef.begin(frame.cmdBuff, frame.swpIndex); 
        setViewPort(app.win.drawArea.x, app.win.drawArea.y, frame);
        gtxDef.bind(frame.cmdBuff);
-
        //----------Update Descriptor set and uniform----------
        VkWriteDescriptorSet  wrt = {};
+       VkWriteDescriptorSet  wrt0 {};
        VkDescriptorImageInfo inf{};
+       VkDescriptorBufferInfo infB{};
        
 
        auto iter = rdrpass._subpasses.getStrideColIterBegin(0, nullptr);
@@ -380,6 +390,15 @@ static void defRndPass(Renderpass& rdrpassDef, Renderpass& rdrpass,
        v2.fillCrtInfo(iter->image); v2.create(app.data);
        inf.imageView = v2.handle;
        rendObj._descSet.wrt(&wrt, 2);
+
+       //-------------------
+       lightBuffer.wrt(&defaultLight);
+       wrt0.descriptorCount = 1;
+       wrt0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+       wrt0.pBufferInfo    = &infB;
+       infB.range          = sizeof(LightData);
+       infB.buffer         = lightBuffer._buff.handle;
+       rendObj._descSet.wrt(&wrt0, 3);
        //-------------------
        rendObj.update(frame.cmdBuff);
        rendObj.draw();
@@ -424,6 +443,11 @@ void Engine::run(Vkapp& app) {
     gfxCmdPool.create(app.data, qfam.gfx );
     compCmdPool.create(app.data, qfam.com);
     VkQueue q = VulkanSupport::getQueue(app.data, offsetof(VulkanSupport::QueueFamIndices, gfx));
+
+    lightBuffer.create(app.data, sizeof(LightData));
+
+    defaultCam.trans.pos = {5.0, 20.2, 101.};
+    defaultLight.pos.z = 100.0f;
     //-----------Setup and create renderpass----------- 
     //Fist rdrpass MRT
     AttachmentContainer att;
@@ -443,7 +467,7 @@ void Engine::run(Vkapp& app) {
     rdrpass._subpasses.add(app.win, app.data, att, nullptr);  //First subpass
     rdrpass.setSwpChainHijack(-1, 0);
     rdrpass.create(app.data, app.win);
-    rdrpass.fillBeginInfo(app.win);
+    rdrpass.fillBeginInfo(app.win, {0.0f, 0.0, 0.0, 0.0f});
 
     //Second rdrpass for rendering
     AttachmentContainer att0;
@@ -501,7 +525,8 @@ void Engine::run(Vkapp& app) {
     {
      {0, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
      {1, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-     {2, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
+     {2, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+     {3, VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
     };
   
     //gtx.setup({P0PATHVERT, P0PATHFRAG, P0PATHGEOM}, &rdrpass);
@@ -512,30 +537,35 @@ void Engine::run(Vkapp& app) {
     gtxDef.create();
     
     SubdivQuad sq;
-    sq.init(10);
-
-    Scene scene;
+    sq.init(1, 0.5, 0); Scene scene;
     GfxContext* mrtGtx = scene.push();
     mrtGtx->setup({ P0PATHVERT, P0PATHFRAG, P0PATHGEOM }, &rdrpass);
-    mrtGtx->pipeline.rasterState.cullMode = VK_CULL_MODE_NONE; //Temporary, i want to flip terrain
+    //mrtGtx->pipeline.rasterState.cullMode = VK_CULL_MODE_NONE; //Temporary, i want to flip terrain
+    //mrtGtx->pipeline.rasterState.polygonMode = VK_POLYGON_MODE_LINE;
     mrtGtx->create();
 
     Obj& terrain     = scene.push(mrtGtx);
-    MeshRenderer* mr = terrain.add<MeshRenderer>();
-    terrain.add<Transform>();
-    mr->_gobj.init(mrtGtx,  &sq._data); 
-    CbkData d;
-    terrain.setInitCbk(terInit, &d);
-    terrain.setUpdateCkb(terUpdate, &d);
+    void (*initProc)(Obj*) = [](Obj* obj) -> void { 
+        obj->get<Terrain>()->init();
+    };
+    void (*updateProc)(Obj*) = [](Obj* obj) -> void { 
+        defaultCam.setPerp(FOV, 1.0, 0.0001);
+        defaultCam.updateView(); 
+        obj->get<Terrain>()->update();
+    }; 
 
-    Obj& terrain2     = scene.push(mrtGtx);
-    mr = terrain2.add<MeshRenderer>();
-    terrain2.add<Transform>()->pos.x = 1.0;
-    terrain2.get<Transform>()->scale.x = -1.0f;
-    mr->_gobj.init(mrtGtx,  &sq._data); 
-    CbkData d2;
-    terrain2.setInitCbk(terInit, &d2);
-    terrain2.setUpdateCkb(terUpdate, &d2);
+     Terrain* tt = terrain.add<Terrain>();
+     tt->gtx = mrtGtx;
+     tt->cam = &defaultCam;
+     terrain.setInitCbk( initProc );
+     terrain.setUpdateCkb( updateProc );
+
+//    MeshRenderer* mr = terrain.add<MeshRenderer>();
+//    terrain.add<Transform>();
+//    mr->_gobj.init(mrtGtx,  &sq._data); 
+//    CbkData d;
+//    terrain.setInitCbk(terInit, &d);
+//    terrain.setUpdateCkb(terUpdate, &d);
 
     scene.init();
 
@@ -545,9 +575,8 @@ void Engine::run(Vkapp& app) {
     gtxBase.setup({"../build/bin/base.mrt.vert.spv","../build/bin/base.mrt.frag.spv"}, &rdrpass);
     gtxBase.create();
 
-    subQuad.init(10);
-    cube.init();
-    t.init(); 
+    //subQuad.init(10, 0.0, 1); 
+    //cube.init();
     t0.setInitSize({2.0f,2.0f});
     t0.init();
 

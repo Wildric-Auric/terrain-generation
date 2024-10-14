@@ -4,9 +4,7 @@
 
 int main() {
     Engine eng;
-    Vkapp app;
-    
-    
+    Vkapp app; 
     GfxParams::inst.msaa  = MSAAvalue::x1;
     app.win.drawArea = {900, 900};
     app.validationEnabled = true;

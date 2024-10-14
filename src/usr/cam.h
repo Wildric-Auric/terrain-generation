@@ -1,6 +1,12 @@
 #pragma once
 #include "components/basic.h"
 
+typedef struct {
+        fmat4 view;
+        fmat4 model;
+        fmat4 proj;
+} MVPData;
+
 struct Rect {
     float left;
     float right;

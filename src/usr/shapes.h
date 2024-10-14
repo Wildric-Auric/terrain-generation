@@ -3,17 +3,17 @@
 #include "bcknd/vertex.h"
 
 #define INHERIT_SHAPE_INIT \
-    void init() override;  \
+    void init(bool isDynamic = 0) override;  \
 
 #define INHERIT_SHAPE      \
-    void init() override;  \
+    void init(bool isDynamic = 0) override;  \
     void draw() override;  
 
 class Shape {
     public:
     VertexObject _vobj; 
     ui32         _indexCount = 0;
-    virtual void init();
+    virtual void init(bool isDynamic = 0);
     virtual void draw();
     virtual void destroy();
 };
@@ -37,7 +37,7 @@ class Cube : public Shape {
 
 class Mesh : public Shape {
     public:
-    std::vector<float> vertices;
+    std::vector<float>      vertices;
     std::vector<ui32>       indices;
     void addVert(const std::vector<float>&);
     void addInd(const ui32);
@@ -51,6 +51,6 @@ class SubdivQuad {
     ui32 _subdiv = 10;
     Mesh _data;
     
-    void init(const ui32 sub, const float res = 0.5f);
+    void init(const ui32 sub, const float res = 0.5f, bool isDynamic = 0, fvec2 uvoffset = {0.0f, 0.0f});
     void dstr();
 };

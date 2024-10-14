@@ -14,10 +14,9 @@ float noise(in vec2 pos) {
     float c        = rand(floor(pos + vec2(1.0, 1.0)));
     float d        = rand(floor(pos + vec2(0.0, 1.0)));
     
-    vec2 xy = localPos*localPos*(3.0 - 2.0*localPos);
+    vec2 xy = smoothstep(vec2(0.0), vec2(1.0), localPos); //localPos*localPos*(3.0 - 2.0*localPos);
     
     return mix(mix(a, b, xy.x), mix(d, c, xy.x), xy.y);
-    
 }
 
 float fbm(in vec2 pos) {
@@ -35,8 +34,8 @@ float fbm(in vec2 pos) {
 }
 
 float n(in vec2 x) {
-    return fbm(x*5.0);
-    //return fbm(vec2(fbm(x*1.5), fbm(x*3.0)));
+    //return -3.0*fbm(x*5.0);
+    return -3.0*fbm(vec2(fbm(x*1.5), fbm(x*3.0)));
 }
 //---------------------------------
 
@@ -73,21 +72,23 @@ vec3 up(in vec3 p, in vec2 iuv, in mat4 model) {
 }
 
 void main() {
-    float c = 0.2;
+    float c = 1.0;
     vec3 r; vec3 u;
 
     vec4 pos; vec4 pos1; vec4 pos2;
     pos    = ubo[0].model * gl_in[0].gl_Position;
-    pos.y += c * n(uv[0]);
+    pos.y +=  n(uv[0]);
 
     pos1    = ubo[1].model * gl_in[1].gl_Position;
-    pos1.y += c * n(uv[1]);
+    pos1.y += n(uv[1]);
 
     pos2    = ubo[2].model * gl_in[2].gl_Position;
-    pos2.y += c * n(uv[2]);
+    pos2.y += n(uv[2]);
     
     fragUV      = uv[0];
     normal      = normalize(-cross(pos1.xyz - pos.xyz, pos2.xyz - pos.xyz));
+    normal.x    = -normal.x;
+    normal.z    = -normal.z;
     //r = right(gl_in[0].gl_Position.xyz, uv[0], ubo[0].model) - pos.xyz;
     //u = up(gl_in[0].gl_Position.xyz, uv[0], ubo[0].model)    - pos.xyz;
     //normal      = normalize(-cross(r,u));

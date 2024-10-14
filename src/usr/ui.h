@@ -19,6 +19,12 @@ LRESULT CALLBACK defaultWinProc(HWND hwnd, UINT uMsg,
                                 WPARAM wParam, LPARAM lParam);
 }
 
+struct LightData {
+    fvec3 pos = fvec3(-0.4, 20.7, -0.2);
+    fvec3 col = fvec3(1.0, 1.0, 1.0);
+};
+
+extern LightData defaultLight;
 extern Cam   defaultCam;
 
 //As NWengine uses directly windows api, we just need to call imgui callback to handle interactions
@@ -58,6 +64,8 @@ inline void UIRender() {
     ImGui::DragFloat("FOV", &FOV, 0.05);
     ImGui::DragFloat3("Camera Position", &defaultCam.trans.pos.x, 0.05);
     ImGui::DragFloat3("Camera Rotation", &defaultCam.trans.rot.x, 0.05);
+    ImGui::DragFloat3("Light Position",  &defaultLight.pos.x, 0.05);
+    ImGui::DragFloat3("Light Color",     &defaultLight.col.x, 0.05);
     ImGui::End();
     //ImGui::ShowDemoWindow();
     ImGui::Render();
