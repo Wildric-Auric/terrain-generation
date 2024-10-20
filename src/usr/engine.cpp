@@ -8,6 +8,7 @@
 #include "bcknd/frame.h"
 #include "bcknd/support.h"
 #include "bcknd/params.h"
+#include "bcknd/vkimg.h"
 
 #include "shared.h"
 #include "shapes.h"
@@ -17,6 +18,9 @@
 #include "scene.h"
 #include "components/mesh_renderer.h"
 #include "terrain.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb/stb_image.h"
 
 
 #define P0PATHVERT "../build/bin/gpu_terrain.mrt.vert.spv"
@@ -51,6 +55,51 @@ GfxContext gtxShadow;    //Context for Shadow Map
 GfxContext gtxDef;       //Final deferred rendering ctx 
 
 GfxContext gtxBase;
+
+
+
+Img     im; 
+ImgView imgView;
+Sampler smpler;
+
+
+void loadImg(const std::string& path, Img& im, ImgView& imView) {;
+    Buffer  imBuff;
+    ui32  imgSize;
+    ivec2 vecSize;
+    i32 channels;
+    stbi_uc* pixels = stbi_load(path.c_str(), &vecSize.x, &vecSize.y, &channels, STBI_rgb_alpha);
+    imgSize = vecSize.x * vecSize.y * 4;
+
+    imBuff.fillCrtInfo();
+    imBuff.crtInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    imBuff.memProp       = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    imBuff.create(GlobalData::app->data, imgSize);
+    void* mem;
+    imBuff.mapMem(&mem);
+    memcpy(mem, pixels, imgSize);
+    imBuff.unmapMem(&mem);
+
+    im.fillCrtInfo();
+    im.crtInfo.extent.width  = vecSize.x;
+    im.crtInfo.extent.height = vecSize.y;
+    im.crtInfo.usage         = VK_IMAGE_USAGE_SAMPLED_BIT      
+                             | VK_IMAGE_USAGE_TRANSFER_SRC_BIT 
+                             | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    im.setMaxmmplvl();
+    im.create(GlobalData::app->data);
+    im.cpyFrom(*GlobalData::cmdBuffPool, imBuff, vecSize, 0);
+    im.genmmp(*GlobalData::cmdBuffPool, offsetof(VulkanSupport::QueueFamIndices, gfx));
+    im.changeLyt(VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    *GlobalData::cmdBuffPool); 
+
+    imView.fillCrtInfo(im);
+    imView.create(GlobalData::app->data);
+
+    imBuff.dstr();
+}
+
+
 
 //TODO::Refactor and integrate this to vkutil
 VkResult setupRdrpassFmbuffs(Renderpass& rdrpass, Window& win, VulkanData& _vkdata, Swapchain& swpchain) {
@@ -212,6 +261,8 @@ static void mrtRndPass(Renderpass& rdrpass, Frame& frame, Vkapp& app, GfxContext
 
        VkWriteDescriptorSet   wrt0{};
        VkDescriptorBufferInfo buffInf{};
+
+
        buffInf.offset = 0;
        buffInf.range  = unf._buff._size;
        buffInf.buffer = unf._buff.handle;
@@ -220,6 +271,7 @@ static void mrtRndPass(Renderpass& rdrpass, Frame& frame, Vkapp& app, GfxContext
        wrt0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
        wrt0.descriptorCount = 1; 
        wrt0.pBufferInfo     = &buffInf;
+
 
 
        defaultCam.setPerp(FOV, 1.0, 0.0001);
@@ -241,6 +293,8 @@ static void mrtRndPass(Renderpass& rdrpass, Frame& frame, Vkapp& app, GfxContext
        unf.wrt(&unfData);
        obj._descSet.wrt(&wrt0, 0);  
        obj.update(frame.cmdBuff);
+       
+
 
        obj.draw();
 
@@ -295,6 +349,7 @@ void terUpdate(Obj* obj) {
        wrt0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
        wrt0.descriptorCount = 1; 
        wrt0.pBufferInfo     = &buffInf;
+
 
        defaultCam.setPerp(FOV, 1.0, 0.0001);
        defaultCam.updateView(); 
@@ -446,8 +501,9 @@ void Engine::run(Vkapp& app) {
 
     lightBuffer.create(app.data, sizeof(LightData));
 
-    defaultCam.trans.pos = {5.0, 20.2, 101.};
-    defaultLight.pos.z = 100.0f;
+    defaultCam.trans.pos = {8.6,1.8, 49.4};
+    defaultCam.trans.rot = {33.1,-1.0, 0.0};
+    defaultLight.pos     = {10.0,0.5,10.0};
     //-----------Setup and create renderpass----------- 
     //Fist rdrpass MRT
     AttachmentContainer att;
@@ -539,7 +595,22 @@ void Engine::run(Vkapp& app) {
     SubdivQuad sq;
     sq.init(1, 0.5, 0); Scene scene;
     GfxContext* mrtGtx = scene.push();
-    mrtGtx->setup({ P0PATHVERT, P0PATHFRAG, P0PATHGEOM }, &rdrpass);
+
+    //Temp----------------------
+    loadImg("../res/heightmap.png", im, imgView);
+    smpler.fillCrtInfo(app.data);
+    smpler.create(app.data);
+    //--------------------------- 
+
+
+
+
+    std::vector<VkDescriptorSetLayoutBinding> descPoolBindings = {
+        { 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr },
+        { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_GEOMETRY_BIT, nullptr}
+    };
+
+    mrtGtx->setup({ P0PATHVERT, P0PATHFRAG, P0PATHGEOM }, &rdrpass, &descPoolBindings);
     //mrtGtx->pipeline.rasterState.cullMode = VK_CULL_MODE_NONE; //Temporary, i want to flip terrain
     //mrtGtx->pipeline.rasterState.polygonMode = VK_POLYGON_MODE_LINE;
     mrtGtx->create();
@@ -549,7 +620,7 @@ void Engine::run(Vkapp& app) {
         obj->get<Terrain>()->init();
     };
     void (*updateProc)(Obj*) = [](Obj* obj) -> void { 
-        defaultCam.setPerp(FOV, 1.0, 0.0001);
+        defaultCam.setPerp(FOV, 1.0, 0.0001, 1000.0);
         defaultCam.updateView(); 
         obj->get<Terrain>()->update();
     }; 

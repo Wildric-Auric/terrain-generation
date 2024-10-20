@@ -1,6 +1,10 @@
 #include "terrain.h"
 #include "shared.h"
 
+extern Sampler smpler;
+extern Img     im;
+extern ImgView imgView;
+
 void terrainObjUpdate(Obj* obj) {
     MeshRenderer& mr  = *obj->get<MeshRenderer>();    
     Transform*    tr  = obj->get<Transform>();
@@ -17,6 +21,18 @@ void terrainObjUpdate(Obj* obj) {
     wrt0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     wrt0.descriptorCount = 1; 
     wrt0.pBufferInfo     = &buffInf;
+    
+    VkWriteDescriptorSet   wrt1{};
+    VkDescriptorImageInfo  imgInf;
+
+    imgInf.sampler     = smpler.handle;
+    imgInf.imageLayout = im.crtInfo.initialLayout;
+    imgInf.imageView   = imgView.handle;
+    wrt1.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    wrt1.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    wrt1.descriptorCount = 1;
+    wrt1.pImageInfo      = &imgInf;
+    mr._gobj._descSet.wrt(&wrt1, 1);
 
     dat.unfData.model = tr->_model;
     dat.unfData.proj  = ter->cam->_proj;
@@ -48,16 +64,14 @@ void Terrain::init() {
            MeshRenderer* mr = obj.add<MeshRenderer>();
            Transform*    tr = obj.add<Transform>();
 
+           //int LOD = 7 - 6 * j / _chunckNum.x ;
            int LOD = 8;
-           if (j % 4 == 0 && i % 3 == 0) {
-               LOD = 8;
-           }
 
            q.init(LOD, _chunckSize.x * 0.5, 1, uvoffset);
            mr->init();
            mr->_gobj.init(gtx, &q._data);
            //tr->size = fvec3(_chunckSize.x, _chunckSize.y, 1.0);
-           tr->pos  = offset;
+           tr->pos    = offset;
            tr->rot.x  = 90.0f;
            tr->setModel();
            obj.setUpdateCkb(terrainObjUpdate);

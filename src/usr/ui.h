@@ -67,7 +67,7 @@ inline void UIRender() {
     ImGui::DragFloat3("Light Position",  &defaultLight.pos.x, 0.05);
     ImGui::DragFloat3("Light Color",     &defaultLight.col.x, 0.05);
     ImGui::End();
-    //ImGui::ShowDemoWindow();
+    ImGui::ShowMetricsWindow();
     ImGui::Render();
 }
 

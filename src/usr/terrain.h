@@ -22,7 +22,7 @@ public:
     std::deque<TerrainCbkData> _dat;
 
     fvec2 _chunckSize = fvec2(10.0, 10.0);
-    ivec2 _chunckNum  = ivec2(10, 10);
+    ivec2 _chunckNum  = ivec2(3, 3);
     //temporary, needs to integrate correctly
     GfxContext* gtx   = nullptr;
     Cam* cam;

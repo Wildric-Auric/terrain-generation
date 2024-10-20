@@ -33,9 +33,12 @@ float fbm(in vec2 pos) {
    return ret;
 }
 
+layout(set = 0, binding = 1) uniform sampler2D heightMap;
+
 float n(in vec2 x) {
-    //return -3.0*fbm(x*5.0);
-    return -3.0*fbm(vec2(fbm(x*1.5), fbm(x*3.0)));
+    return -6.0*texture(heightMap, x / 3.0).x;
+    //return -.0*fbm(x*5.0);
+    //return -5.0 * pow(fbm(vec2(fbm(x*1.5), fbm(x*3.0))), 0.9);
 }
 //---------------------------------
 
@@ -52,14 +55,15 @@ layout(location = 1) out  vec3     worldPos;
 layout(location = 2) out  vec3 normal;
 
 float ccc    = pow(2.0, 9.0) + 1.0;
-vec2 stepPos = vec2(1.0/ccc); 
-float stepUV = 1.0 / ccc;
+//vec2 stepPos = vec2(1.0/ccc); 
+vec2  stepPos = vec2(0.1); 
+float stepUV  = 0.01;
 
 vec3 right(in vec3 p, in vec2 iuv, in mat4 model) {
    vec3 pos = p + vec3(stepPos.x*2.0, 0.0, 0.0); 
    vec2 st  = iuv + vec2(stepUV*2.0, 0.0);
    pos = (model * vec4(pos, 1.0)).xyz;
-   pos.y += 0.2 * n(st);
+   pos.y += n(st);
    return pos;
 }
 
@@ -67,7 +71,7 @@ vec3 up(in vec3 p, in vec2 iuv, in mat4 model) {
    vec3 pos = p + vec3(0.0, stepPos.y*2.0, 0.0); 
    vec2 st  = iuv + vec2(0.0,stepUV);
    pos = (model * vec4(pos, 1.0)).xyz;
-   pos.y += 0.2 * n(st);
+   pos.y += n(st);
    return pos;
 }
 
@@ -86,12 +90,15 @@ void main() {
     pos2.y += n(uv[2]);
     
     fragUV      = uv[0];
-    normal      = normalize(-cross(pos1.xyz - pos.xyz, pos2.xyz - pos.xyz));
+
+//    normal      = normalize(-cross(pos1.xyz - pos.xyz, pos2.xyz - pos.xyz));
+//    normal.x    = -normal.x;
+//    normal.z    = -normal.z;
+    r = right(gl_in[0].gl_Position.xyz, uv[0], ubo[0].model) - pos.xyz;
+    u = up(gl_in[0].gl_Position.xyz, uv[0], ubo[0].model)    - pos.xyz;
+    normal      = normalize(-cross(r,u));
     normal.x    = -normal.x;
     normal.z    = -normal.z;
-    //r = right(gl_in[0].gl_Position.xyz, uv[0], ubo[0].model) - pos.xyz;
-    //u = up(gl_in[0].gl_Position.xyz, uv[0], ubo[0].model)    - pos.xyz;
-    //normal      = normalize(-cross(r,u));
     worldPos    = pos.xyz;
     pos         = ubo[0].projection * ubo[0].view * pos;
     gl_Position = pos;
@@ -99,18 +106,22 @@ void main() {
 
     fragUV      = uv[1];
     //normal      = normalize(-cross(pos1.xyz - pos.xyz, pos2.xyz - pos.xyz));
-    //r = right(gl_in[1].gl_Position.xyz, uv[1], ubo[1].model) - pos1.xyz;
-    //u = up(gl_in[1].gl_Position.xyz, uv[1], ubo[1].model)    - pos1.xyz;
-    //normal      = normalize(-cross(r,u));
+    r = right(gl_in[1].gl_Position.xyz, uv[1], ubo[1].model) - pos1.xyz;
+    u = up(gl_in[1].gl_Position.xyz, uv[1], ubo[1].model)    - pos1.xyz;
+    normal      = normalize(-cross(r,u));
+    normal.x    = -normal.x;
+    normal.z    = -normal.z;
     worldPos    = pos1.xyz;
     pos1        = ubo[1].projection * ubo[1].view * pos1;
     gl_Position = pos1;
     EmitVertex();
 
     fragUV      = uv[2];
-    //r = right(gl_in[2].gl_Position.xyz, uv[2], ubo[2].model) - pos2.xyz;
-    //u = up(gl_in[2].gl_Position.xyz, uv[2], ubo[2].model)    - pos2.xyz;
-    //normal      = normalize(-cross(r,u));
+    r = right(gl_in[2].gl_Position.xyz, uv[2], ubo[2].model) - pos2.xyz;
+    u = up(gl_in[2].gl_Position.xyz, uv[2], ubo[2].model)    - pos2.xyz;
+    normal      = normalize(-cross(r,u));
+    normal.x    = -normal.x;
+    normal.z    = -normal.z;
     worldPos    = pos2.xyz;
     pos2        = ubo[2].projection * ubo[2].view * pos2;
     gl_Position = pos2;
