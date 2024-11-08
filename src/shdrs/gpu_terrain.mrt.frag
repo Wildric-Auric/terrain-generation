@@ -10,11 +10,11 @@ layout(location = 2) out vec4 posAtt;
 
 
 void main() {
-    vec3  base    = vec3(0.0, 1.0, 0.0);
+    vec3  base    = vec3(0.3,0.6,0.1);;
 
-    if (pos.y < -4.0) 
-        base = vec3(1.0);
-    else if ( dot(normal, vec3(0.0,1.0,0.0)) < 0.5 ) {
+    if (pos.y < -3.9) 
+        base = vec3(0.7);
+    else if ( normal.y < 0.75 ) {
         base    = vec3(0.3,0.2,0.1);
     }
 

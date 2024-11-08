@@ -251,86 +251,6 @@ static void shadowRndPass(Renderpass& rdrpassShadow, Frame& frame, Vkapp& app, G
        vkQueueWaitIdle(q); //I need timeline semaphores and generally sync abstraction
 }
 
-static void mrtRndPass(Renderpass& rdrpass, Frame& frame, Vkapp& app, GfxContext& gtx, UnfData& unfData, UniBuff& unf, GfxObject& obj, VkQueue& q) {
-       //TODO::Pass Model matrix (transform)
-       rdrpass.begin(frame.cmdBuff, frame.swpIndex);        
-        
-       gtx.bind(frame.cmdBuff);
-
-       setViewPort(frame._data.win->drawArea.x, frame._data.win->drawArea.y, frame);
-
-       VkWriteDescriptorSet   wrt0{};
-       VkDescriptorBufferInfo buffInf{};
-
-
-       buffInf.offset = 0;
-       buffInf.range  = unf._buff._size;
-       buffInf.buffer = unf._buff.handle;
-
-       wrt0.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-       wrt0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-       wrt0.descriptorCount = 1; 
-       wrt0.pBufferInfo     = &buffInf;
-
-
-
-       defaultCam.setPerp(FOV, 1.0, 0.0001);
-//       Rect r{};
-//       r.buttom = -1.0;
-//       r.top    = 1.0;
-//       r.right  = 1.0;
-//       r.left   = -1.0;
-//       defaultCam.setOrtho(r, 0.00, 100.0);
-//       defaultCam.updateView(); 
-//       terData.rot.x = 90.0;
-       defaultCam.updateView(); 
-//       terData.rot.x = 90.0;
-//
-//       unfData.model = terData.setModel();
-       unfData.proj = defaultCam._proj;
-       unfData.view = defaultCam._view;
-
-       unf.wrt(&unfData);
-       obj._descSet.wrt(&wrt0, 0);  
-       obj.update(frame.cmdBuff);
-       
-
-
-       obj.draw();
-
-       gtxBase.bind(frame.cmdBuff);
-
-       cubeTrans.scale = {0.1,0.3,0.1};
-       unfData.model = cubeTrans.setModel();
-       unfData.proj  = defaultCam._proj;
-       unfData.view  = defaultCam._view;
-       static UniBuff unf0;
-
-       unf0.create(app.data,sizeof(unfData));
-       unf0.wrt(&unfData);
-       buffInf.buffer = unf0._buff.handle; 
-       cubeObj._descSet.wrt(&wrt0, 0);
-       cubeObj.update(frame.cmdBuff);
-
-       cubeObj.draw();
-    
-       rdrpass.end(frame.cmdBuff);
-
-       frame.submitInfo.signalSemaphoreCount = 0;
-       frame.submitInfo.waitSemaphoreCount   = 0; //We wait only for the first renderpss, the wait semaphore is img available
-       vkEndCommandBuffer(frame.cmdBuff.handle);
-       vkQueueSubmit(frame.cmdBuff.queue, 1, &frame.submitInfo, frame.fenQueueSubmitComplete.handle);
-       vkWaitForFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete.handle, VK_TRUE, UINT64_MAX);
-       vkResetFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete.handle);
-       vkResetCommandBuffer(frame.cmdBuff.handle, 0);
-       vkBeginCommandBuffer(frame.cmdBuff.handle, &frame.beginInfo);
-       frame.submitInfo.signalSemaphoreCount = 1;   
-       vkQueueWaitIdle(q); 
-
-       unf0.dstr();     
-
-}
-
 
 
 void terUpdate(Obj* obj) {
@@ -373,7 +293,7 @@ void terInit(Obj* obj) {
     dat.unf.create( vkdat, sizeof(UnfData) );
 }
 
-static void mrtRndPass2(Scene& scene, Frame& frame, Vkapp& app, VkQueue& q) {
+static void shadowRndPass2(Scene& scene, Frame& frame, Vkapp& app, VkQueue& q) {
 
        Renderpass& rdrpass = *scene.objs.begin()->first->rdrpass;
        rdrpass.begin(frame.cmdBuff, frame.swpIndex);        
@@ -391,19 +311,40 @@ static void mrtRndPass2(Scene& scene, Frame& frame, Vkapp& app, VkQueue& q) {
        vkResetCommandBuffer(frame.cmdBuff.handle, 0);
        vkBeginCommandBuffer(frame.cmdBuff.handle, &frame.beginInfo);
        frame.submitInfo.signalSemaphoreCount = 1;   
-       vkQueueWaitIdle(q); //I need timeline semaphores and generally sync abstraction
+}
 
-//       frame.submitInfo.signalSemaphoreCount = 0;
-//       frame.submitInfo.waitSemaphoreCount   = 0; //We wait only for the first renderpss, the wait semaphore is img available
-//       vkEndCommandBuffer(frame.cmdBuff.handle);
-//       vkQueueSubmit(frame.cmdBuff.queue, 1, &frame.submitInfo, frame.fenQueueSubmitComplete);
-//       vkWaitForFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete, VK_TRUE, UINT64_MAX);
-//       vkResetFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete);
-//       vkResetCommandBuffer(frame.cmdBuff.handle, 0);
-//       vkBeginCommandBuffer(frame.cmdBuff.handle, &frame.beginInfo);
-//       frame.submitInfo.signalSemaphoreCount = 1;   
-//       vkQueueWaitIdle(q); 
+static void mrtRndPass2(Scene& scene, Frame& frame, Vkapp& app, VkQueue& q) {
 
+       Renderpass& rdrpass = *scene.objs.begin()->first->rdrpass;
+       rdrpass.begin(frame.cmdBuff, frame.swpIndex);        
+       
+       setViewPort(frame._data.win->drawArea.x, frame._data.win->drawArea.y, frame);
+       scene.update();
+    
+       rdrpass.end(frame.cmdBuff);
+
+#ifndef AFTER_SDW
+       frame.submitInfo.signalSemaphoreCount = 0;
+       vkEndCommandBuffer(frame.cmdBuff.handle);
+       vkQueueSubmit(frame.cmdBuff.queue, 1, &frame.submitInfo, frame.fenQueueSubmitComplete.handle);
+       vkWaitForFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete.handle, VK_TRUE, UINT64_MAX);
+       vkResetFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete.handle);
+       vkResetCommandBuffer(frame.cmdBuff.handle, 0);
+       vkBeginCommandBuffer(frame.cmdBuff.handle, &frame.beginInfo);
+       frame.submitInfo.signalSemaphoreCount = 1;   
+
+#else 
+       frame.submitInfo.signalSemaphoreCount = 0;
+       frame.submitInfo.waitSemaphoreCount   = 0; //We wait only for the first renderpss, the wait semaphore is img available
+       vkEndCommandBuffer(frame.cmdBuff.handle);
+       vkQueueSubmit(frame.cmdBuff.queue, 1, &frame.submitInfo, frame.fenQueueSubmitComplete.handle);
+       vkWaitForFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete.handle, VK_TRUE, UINT64_MAX);
+       vkResetFences(app.data.dvc, 1, &frame.fenQueueSubmitComplete.handle);
+       vkResetCommandBuffer(frame.cmdBuff.handle, 0);
+       vkBeginCommandBuffer(frame.cmdBuff.handle, &frame.beginInfo);
+       frame.submitInfo.signalSemaphoreCount = 1;   
+       vkQueueWaitIdle(q); 
+#endif
 
 }
 
@@ -620,7 +561,7 @@ void Engine::run(Vkapp& app) {
         obj->get<Terrain>()->init();
     };
     void (*updateProc)(Obj*) = [](Obj* obj) -> void { 
-        defaultCam.setPerp(FOV, 1.0, 0.0001, 1000.0);
+        defaultCam.setPerp(FOV, 1.0, 0.0001);
         defaultCam.updateView(); 
         obj->get<Terrain>()->update();
     }; 
@@ -704,6 +645,8 @@ void Engine::run(Vkapp& app) {
 
        //shadowRndPass(rdrpassShadow, frame, app, gtxShadow, unfData, unf, terObj, q);
        //mrtRndPass(rdrpass, frame, app, gtx, unfData, unf, terObj, q);
+
+       //shadowRndPass2(scene, frame, app, q);
        mrtRndPass2(scene, frame, app, q);
        defRndPass(rdrpassDef, rdrpass, frame, app, gtxDef, q, rendObj, v0, v1, v2, defSampler);
 

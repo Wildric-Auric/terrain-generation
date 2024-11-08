@@ -36,9 +36,9 @@ float fbm(in vec2 pos) {
 layout(set = 0, binding = 1) uniform sampler2D heightMap;
 
 float n(in vec2 x) {
-    return -6.0*texture(heightMap, x / 3.0).x;
-    //return -.0*fbm(x*5.0);
-    //return -5.0 * pow(fbm(vec2(fbm(x*1.5), fbm(x*3.0))), 0.9);
+    return -10.0*texture(heightMap, x / 3.0).x;
+    //return -1.0*fbm(x*5.0);
+    //return -5.0 * pow(fbm(vec2(fbm(x*0.9), fbm(x*0.7:))), 0.9);
 }
 //---------------------------------
 
