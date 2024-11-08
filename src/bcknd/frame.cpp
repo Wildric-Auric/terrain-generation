@@ -5,39 +5,38 @@
 
 
 bool Renderpass::setSwpChainHijack(ui32 subpassIndex, ui32 attIndex) {
-    if (_subpassHjckIndex >= _subpasses.descs.size() || attIndex >= _subpasses._strideInfo[_subpassHjckIndex].colLen) 
-        return 0;
+    //if (_subpassHjckIndex >= _subpasses.descs.size() || attIndex >= _subpasses._strideInfo[_subpassHjckIndex].colLen) 
+    //    return 0;
     _subpassHjckIndex = subpassIndex;
     _attHjckIndex     = attIndex;
     return 1;
 }
 
-VkResult Swapchain::create(const VulkanData& vkdata, const Window& win, Renderpass& rdrpass) {
+VkResult Swapchain::create(const VulkanData& vkdata, const Window& win) {
     VkResult res;
     VkSwapchainCreateInfoKHR crtInfo{};
-    VkSurfaceFormatKHR srfcFmt;
-    ui32 imgCount;
 
     VulkanSupport::SwpchainCap spec;
     _vkdata = vkdata;
     
     VulkanSupport::getSwapchaincap(_vkdata, spec);
-    srfcFmt = spec.srfcFormats[VulkanSupport::selSrfcFmt(spec)];
+    _srfcFmt = spec.srfcFormats[VulkanSupport::selSrfcFmt(spec)];
 
-    imgCount = spec.cap.minImageCount + 1;
-    if (spec.cap.maxImageCount > 0 && imgCount > spec.cap.maxImageCount) {
-        imgCount = spec.cap.maxImageCount;
+    _imgCount = spec.cap.minImageCount + 1;
+    if (spec.cap.maxImageCount > 0 && _imgCount > spec.cap.maxImageCount) {
+        _imgCount = spec.cap.maxImageCount;
     }
 
     crtInfo.sType   = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     crtInfo.surface = vkdata.srfc;
 
-    crtInfo.imageFormat = srfcFmt.format;
-    crtInfo.imageColorSpace = srfcFmt.colorSpace;
+    crtInfo.imageFormat =     _srfcFmt.format;
+    crtInfo.imageColorSpace = _srfcFmt.colorSpace;
 
-    crtInfo.minImageCount = imgCount;
+    crtInfo.minImageCount = _imgCount;
     crtInfo.imageArrayLayers = 1; 
     chooseExtent(win, spec.cap, &crtInfo.imageExtent);
+    _extent = ivec2(crtInfo.imageExtent.width, crtInfo.imageExtent.height);
     crtInfo.imageUsage  = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; //Render directly
     crtInfo.presentMode = VulkanSupport::selPresent();
 
@@ -67,55 +66,18 @@ VkResult Swapchain::create(const VulkanData& vkdata, const Window& win, Renderpa
     }
     res = vkCreateSwapchainKHR(vkdata.dvc, &crtInfo, nullptr, &handle);
     VK_CHECK_EXTENDED(res, "Failed to create swapchain");
-    vkGetSwapchainImagesKHR(vkdata.dvc, handle, &imgCount, nullptr);
-    imgs.resize(imgCount);
-    vkGetSwapchainImagesKHR(vkdata.dvc, handle, &imgCount, imgs.data());
+    vkGetSwapchainImagesKHR(vkdata.dvc, handle, &_imgCount, nullptr);
+    imgs.resize(_imgCount);
+    vkGetSwapchainImagesKHR(vkdata.dvc, handle, &_imgCount, imgs.data());
     //Create swapchaine image views and framebuffers
-    views.resize(imgCount);
-    
     Img fake;
-    rdrpass.fmbuffs.resize(imgCount);
-    for (arch i = 0; i < imgCount; ++i) {
-        fake.crtInfo.format = srfcFmt.format;
+    views.resize(_imgCount); 
+    for (arch i = 0; i < _imgCount; ++i) {
+        fake.crtInfo.format = _srfcFmt.format;
         fake.crtInfo.samples = (VkSampleCountFlagBits)GfxParams::inst.msaa;
         fake.handle         = imgs[i];
         views[i].fillCrtInfo(fake);
         views[i].create(_vkdata);
-
-        rdrpass.fmbuffs[i].fillCrtInfo();
-        rdrpass.fmbuffs[i].crtInfo.width  = crtInfo.imageExtent.width;
-        rdrpass.fmbuffs[i].crtInfo.height = crtInfo.imageExtent.height;
-
-        std::vector<VkImageView> att;
-
-        for (arch k = 0; k < rdrpass._subpasses.descs.size(); ++k) {
-            AttachmentData* depth = rdrpass._subpasses.getStrideDepth(k);
-            auto colIter = rdrpass._subpasses.getStrideColIterBegin(k, nullptr);
-            auto resIter = rdrpass._subpasses.getStrideColResolveBegin(k, nullptr);
-            arch j = 0;
-            if (resIter != rdrpass._subpasses.resources.end()) {
-                for (;j < rdrpass._subpasses._strideInfo[k].colLen;++j) {
-                    att.push_back((resIter++)->view.handle);
-                }
-            }
-
-            if (colIter != rdrpass._subpasses.resources.end()) {
-                for (j=0;j < rdrpass._subpasses._strideInfo[k].colLen;++j) {
-                    if (rdrpass._subpassHjckIndex == k && rdrpass._attHjckIndex == j)  {
-                        att.push_back(views[i].handle);
-                        ++colIter;
-                        continue;
-                    }
-                    att.push_back((colIter++)->view.handle);
-                }
-            }
-
-            if (depth != nullptr)
-                att.push_back(depth->view.handle);
-        }
-
-
-        res = rdrpass.fmbuffs[i].create(_vkdata, rdrpass.handle, att.data(), att.size());
     }
     return res;
 }
@@ -385,19 +347,18 @@ void Renderpass::dstrRes() {
     }
 }
 
+Renderpass& RenderpassContainer::add() {
+    _passes.push_back({});
+    return _passes.back();
+}
 
-void Frame::end() {
-        VkResult res;
-        vkEndCommandBuffer(cmdBuff.handle);
-        vkQueueSubmit(cmdBuff.queue, 1, &submitInfo ,fenQueueSubmitComplete.handle);
-        res = vkQueuePresentKHR(preQueue, &preInfo);
-        
-        if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR || _data.win->consumesignal()) {
-            processSwpchainRec();
-        }
- 
-        _data.win->ptr->_getKeyboard().update();
-        _data.win->ptr->update();
+Renderpass& RenderpassContainer::get(arch index) {
+    return _passes[index];
+}
+
+void RenderpassContainer::dstr() {
+    for (Renderpass& rdrpass : _passes) 
+        rdrpass.dstr();
 }
 
 void Renderpass::dstrFmbuffs() {
@@ -406,9 +367,9 @@ void Renderpass::dstrFmbuffs() {
     }
 }
 
-void Renderpass::resizeFmbuff(const ui32 imgcount) {
+void Renderpass::resizeFmbuff(const Swapchain& swpchain) {
     dstrFmbuffs(); 
-    createFmbuffs(imgcount);
+    createFmbuffs(swpchain);
 }
 
 void Renderpass::resizeRes(const ivec2& newsize) {
@@ -418,6 +379,7 @@ void Renderpass::resizeRes(const ivec2& newsize) {
         if (data.view.handle == nullptr) continue;
         data.image.crtInfo.extent.width  = newsize.x;
         data.image.crtInfo.extent.height = newsize.y;
+        data.image.crtInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         data.image.create(_vkdata);
         data.view.crtInfo.image = data.image.handle;
         data.view.create(_vkdata);
@@ -425,17 +387,21 @@ void Renderpass::resizeRes(const ivec2& newsize) {
     _rdrpassInfo.renderArea.extent = {(ui32)newsize.x, (ui32)newsize.y};
 }
 
-void Renderpass::resize(const ivec2& newsize, const ui32 imgcount) {
-    resizeRes(newsize);
-    resizeFmbuff(imgcount);
+void Renderpass::resize(const Swapchain& swpchain) {
+    resizeRes(swpchain._extent);
+    resizeFmbuff(swpchain);
 }
 
-VkResult Renderpass::createFmbuffs(ui32 imgCount) {
-    VkResult res = VK_SUCCESS;
-    Img fake;
-    fmbuffs.resize(imgCount);
-    for (arch i = 0; i < imgCount; ++i) {
+VkResult Renderpass::createFmbuffs(const Swapchain& swpchain) {
+    VkResult res;
+    fmbuffs.resize(swpchain._imgCount);
+    for (arch i = 0; i < swpchain._imgCount; ++i) {
+        fmbuffs[i].fillCrtInfo();
+        fmbuffs[i].crtInfo.width  = swpchain._extent.x;
+        fmbuffs[i].crtInfo.height = swpchain._extent.y;
+
         std::vector<VkImageView> att;
+
         for (arch k = 0; k < _subpasses.descs.size(); ++k) {
             AttachmentData* depth = _subpasses.getStrideDepth(k);
             auto colIter = _subpasses.getStrideColIterBegin(k, nullptr);
@@ -449,6 +415,11 @@ VkResult Renderpass::createFmbuffs(ui32 imgCount) {
 
             if (colIter != _subpasses.resources.end()) {
                 for (j=0;j < _subpasses._strideInfo[k].colLen;++j) {
+                    if (_subpassHjckIndex == k && _attHjckIndex == j)  {
+                        att.push_back(swpchain.views[i].handle);
+                        ++colIter;
+                        continue;
+                    }
                     att.push_back((colIter++)->view.handle);
                 }
             }
@@ -456,15 +427,10 @@ VkResult Renderpass::createFmbuffs(ui32 imgCount) {
             if (depth != nullptr)
                 att.push_back(depth->view.handle);
         }
-        fmbuffs[i].fillCrtInfo();
-        fmbuffs[i].crtInfo.width  = _subpasses.resources.front().image.crtInfo.extent.width;
-        fmbuffs[i].crtInfo.height = _subpasses.resources.front().image.crtInfo.extent.height;
         res = fmbuffs[i].create(_vkdata, handle, att.data(), att.size());
     }
     return res;
 }
-
-
 
 VkRenderPassBeginInfo& Renderpass::fillBeginInfo(const Window& win, const fvec4& clrCol) {
     _clearCol.clear();
@@ -585,19 +551,21 @@ void Frame::processSwpchainRec() {
         _data.win->drawArea.x = size.x;
         _data.win->drawArea.y = size.y;
     }
-    _data.swpchain->dstr(); ivec2 s = ivec2((ui32)size.x, (ui32)size.y);
-    _data.rdrpass->resizeRes(s);
-
-    _data.swpchain->create(_vkdata, *_data.win, *_data.rdrpass);
+    _data.swpchain->dstr(); 
+    ivec2 s = ivec2((ui32)size.x, (ui32)size.y);
+    _data.swpchain->create(_vkdata, *_data.win);
+    for (Renderpass& rdrpass : _data.rdrpassCnt->_passes) {
+        rdrpass.resize(*_data.swpchain);
+    }
     _data.win->ptr->_getKeyboard().update();
     _data.win->ptr->update();
 }
 
 bool Frame::begin() {
+        _rdrpassIndex = 0;
         VkResult res;
         Frame& frame = *this;
         VulkanData& data = _vkdata;
-        
         fenQueueSubmitComplete.wait();
         res = vkAcquireNextImageKHR(data.dvc, _data.swpchain->handle, UINT64_MAX, frame.semImgAvailable.handle, VK_NULL_HANDLE, &swpIndex);
         //Swapchain recreation
@@ -605,8 +573,39 @@ bool Frame::begin() {
             processSwpchainRec();
             return 0;
         }
-        vkResetFences(data.dvc, 1, &frame.fenQueueSubmitComplete.handle);
+        frame.fenQueueSubmitComplete.reset();
         vkResetCommandBuffer(cmdBuff.handle, 0);
         vkBeginCommandBuffer(cmdBuff.handle, &beginInfo);
         return 1;
+}
+
+void Frame::end() {
+        submitInfo.waitSemaphoreCount   = _rdrpassIndex == 0;
+        submitInfo.signalSemaphoreCount = 1;
+
+        VkResult res;
+        vkEndCommandBuffer(cmdBuff.handle);
+        vkQueueSubmit(cmdBuff.queue, 1, &submitInfo ,fenQueueSubmitComplete.handle);
+        res = vkQueuePresentKHR(preQueue, &preInfo);
+        if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR || _data.win->consumesignal()) {
+            processSwpchainRec();
+        }
+        _data.win->ptr->_getKeyboard().update();
+        _data.win->ptr->update();
+        
+}
+
+void Frame::nextRdrpass() {
+    submitInfo.waitSemaphoreCount   = _rdrpassIndex == 0;
+    submitInfo.signalSemaphoreCount = 0;
+    
+
+    vkEndCommandBuffer(cmdBuff.handle);
+    vkQueueSubmit(cmdBuff.queue, 1, &submitInfo, fenQueueSubmitComplete.handle);
+    fenQueueSubmitComplete.wait();
+    fenQueueSubmitComplete.reset();
+    vkResetCommandBuffer(cmdBuff.handle, 0);
+    vkBeginCommandBuffer(cmdBuff.handle, &beginInfo);
+    
+    ++_rdrpassIndex;
 }

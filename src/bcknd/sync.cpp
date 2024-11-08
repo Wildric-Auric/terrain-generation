@@ -60,6 +60,10 @@ VkResult Fence::wait() {
     return vkWaitForFences(_vkdata.dvc, 1, &handle, 1, (ui64)-1);
 }
 
+VkResult Fence::reset() { 
+    return vkResetFences(_vkdata.dvc, 1, &handle);
+}
+
 void    Fence::dstr() {
     if (!handle) return;
     vkDestroyFence(_vkdata.dvc, handle, nullptr);

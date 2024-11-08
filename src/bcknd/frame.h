@@ -6,6 +6,7 @@
 
 #include "vulkan/vulkan_core.h"
 #include <vulkan/vulkan.h>
+#include <deque>
 
 
 struct AttachmentData {
@@ -78,6 +79,22 @@ class SubpassContainer {
     arch _ptrAttContainer = 0;
 };
 
+class Swapchain {
+    public:
+        VkResult create(const VulkanData& vkdata, const Window& win);
+        void dstr();
+
+        void chooseExtent(const Window& win, const VkSurfaceCapabilitiesKHR& cap, VkExtent2D* const outExt  );
+
+        VkSwapchainKHR handle = nullptr;
+        std::vector<VkImage>     imgs;
+        std::vector<ImgView>     views;
+        VulkanData         _vkdata;
+        ui32               _imgCount;
+        VkSurfaceFormatKHR _srfcFmt;
+        ivec2 _extent;
+};
+
 class Renderpass {
 public:
     VkResult create(const VulkanData&, const Window& win);
@@ -85,10 +102,10 @@ public:
     VkRenderPassBeginInfo& fillBeginInfo(const Window& win, const fvec4& clrCol = {1.0f, 0.05f, 0.15f, 1.0f}); 
     void    begin(CmdBuff& cmdbuff, ui32 swpIndex);
     void    end(CmdBuff& cmdbuff); 
-    void    resize(const ivec2& newsize, const ui32 imgcount);
-    void    resizeFmbuff(const ui32 imgcount);
+    void    resize(const Swapchain&);
+    void    resizeFmbuff(const Swapchain&);
     void    resizeRes(const ivec2& newsize);
-    VkResult createFmbuffs(ui32 count);
+    VkResult createFmbuffs(const Swapchain&);
 
 
     void dstrFmbuffs();
@@ -111,24 +128,20 @@ public:
     ui32 _attHjckIndex     = 0;
 };
 
-class Swapchain {
+class RenderpassContainer {
     public:
-        VkResult create(const VulkanData& vkdata, const Window& win, Renderpass& rdrpass);
-        void dstr();
-
-        void chooseExtent(const Window& win, const VkSurfaceCapabilitiesKHR& cap, VkExtent2D* const outExt  );
-
-        VkSwapchainKHR handle = nullptr;
-        std::vector<VkImage>     imgs;
-        std::vector<ImgView>     views;
-        VulkanData     _vkdata;
+    Renderpass& add();
+    Renderpass& get(arch index = 0);
+    void dstr();
+    std::deque<Renderpass> _passes;
 };
+
 
 struct FrameData {
     Window*        win;
     Swapchain*     swpchain;
     CmdBufferPool* cmdBuffPool;
-    Renderpass*    rdrpass;
+    RenderpassContainer*  rdrpassCnt;
 };
 
 class Frame {
@@ -137,6 +150,7 @@ class Frame {
         void         processSwpchainRec();
         void         dstr(); 
         bool begin();
+        void nextRdrpass();
         void end();
 
         Fence     fenQueueSubmitComplete; //Signaled by  vkQueueSubmit()
@@ -154,5 +168,6 @@ class Frame {
 
         VkQueue gfxQueue;
         VkQueue preQueue;
-        ui32 swpIndex; 
+        ui32    swpIndex;  
+        ui32    _rdrpassIndex = 0;
 };

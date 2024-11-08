@@ -26,5 +26,6 @@ class Fence {
     VkFenceCreateInfo& fillCrtInfo(const VulkanData& data, bool isSignaled = 0);
     VkResult create();
     VkResult wait();
+    VkResult reset();
     void     dstr();
 };
