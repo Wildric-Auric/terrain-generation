@@ -33,6 +33,7 @@
 #define P2PATHVERT "../build/bin/shadow.vert.spv"
 #define P2PATHFRAG "../build/bin/shadow.frag.spv"
 
+#define PATHSHADOWFRAG "../build/bin/shadow.frag.spv"
 UniBuff lightBuffer;
 
 float FOV = 60.0;
@@ -44,11 +45,7 @@ GfxObject  terObj;
 GfxObject  cubeObj;
 GfxObject  rendObj;
 
-GfxContext gtx;          //Context for MRT 
-GfxContext gtxShadow;    //Context for Shadow Map
 GfxContext gtxDef;       //Final deferred rendering ctx 
-
-GfxContext gtxBase;
 
 Img     im; 
 ImgView imgView;
@@ -239,10 +236,6 @@ static void defRndPass(Renderpass& rdrpassDef, Renderpass& rdrpass,
        rdrpassDef.end(frame.cmdBuff); 
 }
 
-
-
-
-
 void Engine::run(Vkapp& app) {
     //Set default values
     defaultCam.trans.pos = {0., 0.25, 1.15};
@@ -291,6 +284,7 @@ void Engine::run(Vkapp& app) {
     Renderpass& rdrpassDef = rdrcnt.add();
     Renderpass& rdrpassShadow = rdrcnt.add();
 
+
     rdrpass._subpasses.setup(1,4);
     rdrpass._subpasses.add(app.win, app.data, att, nullptr);  //First subpass
     rdrpass.setSwpChainHijack(-1, 0);
@@ -310,14 +304,14 @@ void Engine::run(Vkapp& app) {
 
     //Renderpass for shadowmap
     AttachmentContainer att1;
-    Attachment* colAtt1 = att1.add();
     att1.addDepth();
-    rdrpassShadow._subpasses.setup(1,2);
+    rdrpassShadow._subpasses.setup(1,1);
     rdrpassShadow._subpasses.add(app.win, app.data, att1, nullptr);
-    rdrpassShadow.setSwpChainHijack(-1,0);
+    rdrpassShadow.setSwpChainHijack(-1,-1);
     rdrpassShadow.create(app.data, app.win);
     rdrpassShadow.fillBeginInfo(app.win);
-   
+    
+    //Create swapchain and framebuffers
     swpchain.create(app.data, app.win);
     rdrpassDef.createFmbuffs(swpchain);
     rdrpass.createFmbuffs(swpchain);
@@ -325,8 +319,7 @@ void Engine::run(Vkapp& app) {
     defSampler.fillCrtInfo(app.data);
     defSampler.create(app.data);
 
-
-
+    //Create frame
     frameData.win = &app.win;
     frameData.swpchain = &swpchain;
     frameData.cmdBuffPool = &gfxCmdPool;
@@ -356,10 +349,6 @@ void Engine::run(Vkapp& app) {
      {3, VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
     };
   
-    //gtx.setup({P0PATHVERT, P0PATHFRAG, P0PATHGEOM}, &rdrpass);
-    //gtx.pipeline.rasterState.polygonMode = VK_POLYGON_MODE_LINE;
-    //gtx.create();
-
     gtxDef.setup({ P1PATHVERT, P1PATHFRAG }, &rdrpassDef, &lytBindings);
     gtxDef.create();
     
@@ -381,9 +370,8 @@ void Engine::run(Vkapp& app) {
         { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_GEOMETRY_BIT, nullptr}
     };
 
-    mrtGtx->setup({ P0PATHVERT, P0PATHFRAG, P0PATHGEOM }, &rdrpass, &descPoolBindings);
-    //mrtGtx->pipeline.rasterState.cullMode = VK_CULL_MODE_NONE; //Temporary, i want to flip terrain
-    //mrtGtx->pipeline.rasterState.polygonMode = VK_POLYGON_MODE_LINE;
+    mrtGtx->setup({ P0PATHVERT, P0PATHFRAG, P0PATHGEOM }, 
+                  &rdrpass, &descPoolBindings);
     mrtGtx->create();
 
     Obj& terrain     = scene.push(mrtGtx);
@@ -396,26 +384,29 @@ void Engine::run(Vkapp& app) {
         obj->get<Terrain>()->update();
     }; 
 
-     Terrain* tt = terrain.add<Terrain>();
-     tt->gtx = mrtGtx;
-     tt->cam = &defaultCam;
-     terrain.setInitCbk( initProc );
-     terrain.setUpdateCkb( updateProc );
-
-//    MeshRenderer* mr = terrain.add<MeshRenderer>();
-//    terrain.add<Transform>();
-//    mr->_gobj.init(mrtGtx,  &sq._data); 
-//    CbkData d;
-//    terrain.setInitCbk(terInit, &d);
-//    terrain.setUpdateCkb(terUpdate, &d);
+    Terrain* tt = terrain.add<Terrain>();
+    tt->gtx = mrtGtx;
+    tt->cam = &defaultCam;
+    terrain.setInitCbk( initProc );
+    terrain.setUpdateCkb( updateProc );
 
     scene.init();
 
-    gtxShadow.setup({P2PATHVERT, P2PATHFRAG}, &rdrpassShadow);
-    gtxShadow.create();
+    //Shadow scene-------
+    Scene shadowScene;
+    GfxContext* shadowGtx = shadowScene.push();
+    shadowGtx->setup({ P0PATHVERT, "", P0PATHGEOM},
+                     &rdrpassShadow, &descPoolBindings);
 
-    gtxBase.setup({"../build/bin/base.mrt.vert.spv","../build/bin/base.mrt.frag.spv"}, &rdrpass);
-    gtxBase.create();
+    shadowGtx->create();
+    Obj& terrainShadowObj  = shadowScene.push(shadowGtx);
+    Terrain* terrainShadow = terrainShadowObj.add<Terrain>();
+    terrainShadow->gtx     = shadowGtx;
+    terrainShadow->cam     = &defaultCam;
+    terrainShadowObj.setInitCbk(initProc);
+    terrainShadowObj.setUpdateCkb(updateProc);
+    shadowScene.init();
+    //-------------------
 
     //subQuad.init(10, 0.0, 1); 
     //cube.init();
@@ -468,7 +459,8 @@ void Engine::run(Vkapp& app) {
         v1.dstr();
         v2.dstr();
 
-       //shadowRndPass2(scene, frame, app, q);
+       shadowRndPass2(shadowScene, frame, app, q);
+       frame.nextRdrpass();
        mrtRndPass2(scene, frame, app, q);
        frame.nextRdrpass();
        defRndPass(rdrpassDef, rdrpass, frame, app, gtxDef, q, rendObj, v0, v1, v2, defSampler);

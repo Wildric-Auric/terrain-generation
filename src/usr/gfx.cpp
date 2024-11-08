@@ -2,18 +2,24 @@
 #include "shared.h"
 #include "bcknd/io.h"
 
-static void loadShaders(Vkapp& app, const char* vertPath, const char* fragPath, Shader& vertS, Shader& fragS, Shader* geomS = nullptr, const char* geomPath = nullptr) {
+static void loadShaders(Vkapp& app, const char* vertPath, const char* fragPath, Shader* vertS, Shader* fragS, Shader* geomS = nullptr, const char* geomPath = nullptr) {
     std::vector<char> vsrc, fsrc, gsrc;
-    io::readBin(vertPath, vsrc);
-    io::readBin(fragPath, fsrc);
-    vertS.fillCrtInfo((const ui32*)vsrc.data(), vsrc.size());
-    fragS.fillCrtInfo((const ui32*)fsrc.data(), fsrc.size()); 
-    vertS.create(app.data);
-    fragS.create(app.data);
-    vertS.fillStageCrtInfo(VK_SHADER_STAGE_VERTEX_BIT);
-    fragS.fillStageCrtInfo(VK_SHADER_STAGE_FRAGMENT_BIT);
 
-    if (geomS != nullptr) {
+    if (vertPath != nullptr) {
+        io::readBin(vertPath, vsrc);
+        vertS->fillCrtInfo((const ui32*)vsrc.data(), vsrc.size());
+        vertS->create(app.data);
+        vertS->fillStageCrtInfo(VK_SHADER_STAGE_VERTEX_BIT);
+    }
+
+    if (fragPath != nullptr) {
+        io::readBin(fragPath, fsrc);
+        fragS->fillCrtInfo((const ui32*)fsrc.data(), fsrc.size()); 
+        fragS->create(app.data);
+        fragS->fillStageCrtInfo(VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
+
+    if (geomPath != nullptr) {
         io::readBin(geomPath, gsrc);
         geomS->fillCrtInfo((const ui32*)gsrc.data(), gsrc.size());
         geomS->create(app.data);
@@ -22,22 +28,24 @@ static void loadShaders(Vkapp& app, const char* vertPath, const char* fragPath, 
 }
 
 void GfxContext::setup(const ShaderLoc& loc, Renderpass* r,const std::vector<VkDescriptorSetLayoutBinding>* descPoolBinding) {
-
-    if (!loc.geom.empty()) 
-        loadShaders(*GlobalData::app, loc.vert.c_str(), loc.frag.c_str(), vertS, fragS, &geomS, loc.geom.c_str());
-    else 
-        loadShaders(*GlobalData::app, loc.vert.c_str(), loc.frag.c_str(), vertS, fragS);
-
-    uchar n = 2 + !loc.geom.empty();
-    VkPipelineShaderStageCreateInfo* stages = new VkPipelineShaderStageCreateInfo[n] {
-        vertS.stageCrtInfo,
-        fragS.stageCrtInfo, 
-    };
-
-    if (!loc.geom.empty()) {
-        stages[n-1] = geomS.stageCrtInfo;
-    }
     
+    loadShaders(*GlobalData::app, 
+                loc.vert.empty() ? nullptr : loc.vert.c_str(),
+                loc.frag.empty() ? nullptr : loc.frag.c_str(), 
+                &vertS, &fragS, &geomS, 
+                loc.geom.empty() ? nullptr : loc.geom.c_str()
+               );
+
+    uchar n = !loc.vert.empty() + !loc.frag.empty() + !loc.geom.empty();
+    VkPipelineShaderStageCreateInfo* stages = new VkPipelineShaderStageCreateInfo[n];
+
+
+    uchar cur = 0;
+
+    !loc.vert.empty() ? stages[cur++] = vertS.stageCrtInfo : void();
+    !loc.frag.empty() ? stages[cur++] = fragS.stageCrtInfo : void();
+    !loc.geom.empty() ? stages[cur++] = geomS.stageCrtInfo : void();
+
     rdrpass = r;
     pipeline.fillCrtInfo(rdrpass->_subpasses._strideInfo[0].colLen);
     pipeline.crtInfo.stageCount           = n;

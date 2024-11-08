@@ -229,8 +229,8 @@ void SubpassContainer::add(const Window& win, const VulkanData& vkdata, Attachme
     Subpass s;
     ui32 beg = _ptrAttContainer;
     ui32 cur = _ptrAttContainer;
-    ui32 resOffset  = 0;
-    ui32 dpthOffset = 0;
+    ui32 resOffset  = -1;
+    ui32 dpthOffset = -1;
     StrideData& sInfo = _strideInfo[_ptrSPContainer];
 
     sInfo.colOffset = beg;
@@ -277,8 +277,8 @@ void SubpassContainer::add(const Window& win, const VulkanData& vkdata, Attachme
 
     s.desc.pColorAttachments       = attRefs.data() + beg;
     s.desc.colorAttachmentCount    = atts._container.size();
-    s.desc.pResolveAttachments     = resOffset == 0 ? nullptr:attRefs.data() + resOffset; 
-    s.desc.pDepthStencilAttachment = dpthOffset == 0? nullptr:attRefs.data() + dpthOffset;
+    s.desc.pResolveAttachments     = resOffset == -1 ? nullptr:attRefs.data() + resOffset; 
+    s.desc.pDepthStencilAttachment = dpthOffset == -1? nullptr:attRefs.data() + dpthOffset;
     s.desc.pInputAttachments       = 0; //TODO::Add input attachment setup
     s.desc.inputAttachmentCount    = 0;
 
