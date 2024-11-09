@@ -24,12 +24,23 @@ void Cam::setRotation(const fvec3& newRot) {
     trans.rot = newRot; 
 };
  
-void Cam::updateView() {
-    _view = fmat4(1.0);
+void Cam::updateViewTrans() {
+    TranslateMat(_view, fvec3(-trans.pos.x, -trans.pos.y, -trans.pos.z));
+}
 
+void Cam::updateViewRot() {
     RotateMat(_view, -trans.rot.x, {1.0, 0.0, 0.0});
     RotateMat(_view, -trans.rot.y, {0.0, 1.0, 0.0});
     RotateMat(_view, -trans.rot.z, {0.0, 0.0, 1.0});
+}
 
-    TranslateMat(_view, fvec3(-trans.pos.x, -trans.pos.y, -trans.pos.z));
+void Cam::resetView() {
+    _view = fmat4(1.0);
+}
+
+void Cam::updateView() {
+    resetView();
+    updateViewRot();
+    updateViewTrans();
+
 };

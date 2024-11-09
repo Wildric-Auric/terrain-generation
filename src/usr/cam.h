@@ -28,6 +28,9 @@ class Cam {
         void setRotation(const fvec3& newRot);
         
         void updateView(); 
+        void updateViewTrans();
+        void updateViewRot();
+        void resetView();
 
         fmat4 _view; 
         fmat4 _proj;
