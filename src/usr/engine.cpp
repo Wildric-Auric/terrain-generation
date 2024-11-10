@@ -92,10 +92,6 @@ typedef struct {
         Matrix4<float> model;
         Matrix4<float> proj;
 } UnfData;
-typedef struct {
-    UnfData unfData;
-    UniBuff unf;
-} CbkData;
 
 void setViewPort(ui32 x, ui32 y, Frame& frame, bool m = 0) {
        VkViewport viewport;
@@ -117,46 +113,6 @@ void setViewPort(ui32 x, ui32 y, Frame& frame, bool m = 0) {
        scissor.offset =  { (i32)viewport.x, (i32)viewport.y };
        vkCmdSetViewport(frame.cmdBuff.handle, 0, 1, &viewport);
        vkCmdSetScissor(frame.cmdBuff.handle, 0, 1, &scissor);
-}
-
-void terUpdate(Obj* obj) {
-    MeshRenderer* mr = obj->get<MeshRenderer>();
-    Transform*    tr = obj->get<Transform>();
-    auto& vkdat = mr->_gobj._gtx->rdrpass->_vkdata;
-    CbkData& dat = *(CbkData*)obj->updateCbkData;
-
-       VkWriteDescriptorSet   wrt0{};
-       VkDescriptorBufferInfo buffInf{};
-       buffInf.offset = 0;
-       buffInf.range  = dat.unf._buff._size;
-       buffInf.buffer = dat.unf._buff.handle;
-
-       wrt0.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-       wrt0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-       wrt0.descriptorCount = 1; 
-       wrt0.pBufferInfo     = &buffInf;
-
-
-       defaultCam.setPerp(FOV, 1.0, 0.0001);
-       defaultCam.updateView(); 
-       tr->rot.x = 90.0;
-
-       dat.unfData.model = tr->setModel();
-       dat.unfData.proj  = defaultCam._proj;
-       dat.unfData.view  = defaultCam._view;
-
-       dat.unf.wrt(&dat.unfData);
-       mr->_gobj._descSet.wrt(&wrt0, 0);  
-       mr->_gobj.update(*GlobalData::cmdBuff);
-
-       mr->_gobj.draw();
-}
-
-void terInit(Obj* obj) {
-    MeshRenderer* mr = obj->get<MeshRenderer>();
-    auto& vkdat = mr->_gobj._gtx->rdrpass->_vkdata;
-    CbkData& dat = *(CbkData*)obj->updateCbkData;
-    dat.unf.create( vkdat, sizeof(UnfData) );
 }
 
 static void shadowRndPass2(Scene& scene, Frame& frame, Vkapp& app, VkQueue& q) {
@@ -236,10 +192,12 @@ static void defRndPass(Renderpass& rdrpassDef, Renderpass& rdrpass,
        rdrpassDef.end(frame.cmdBuff); 
 }
 
+Scene scene;
+
 void Engine::run(Vkapp& app) {
     //Set default values
-    defaultCam.trans.pos = {0., 0.25, 1.15};
-    defaultCam.trans.rot = {28.05, 0., 0.0};
+    defaultCam.trans.pos = {38.6, -3.15, 96.85};
+    defaultCam.trans.rot = {0.0, 0.0, 0.0};
     //------------------
     CmdBufferPool gfxCmdPool;
     CmdBufferPool compCmdPool;
@@ -263,9 +221,6 @@ void Engine::run(Vkapp& app) {
 
     lightBuffer.create(app.data, sizeof(LightData));
 
-    defaultCam.trans.pos = {8.6,1.8, 49.4};
-    defaultCam.trans.rot = {33.1,-1.0, 0.0};
-    defaultLight.pos     = {10.0,0.5,10.0};
     //-----------Setup and create renderpass----------- 
     //Fist rdrpass MRT
     AttachmentContainer att;
@@ -353,7 +308,7 @@ void Engine::run(Vkapp& app) {
     gtxDef.create();
     
     SubdivQuad sq;
-    sq.init(1, 0.5, 0); Scene scene;
+    sq.init(1, 0.5, 0); 
     GfxContext* mrtGtx = scene.push();
 
     //Temp----------------------
@@ -372,6 +327,7 @@ void Engine::run(Vkapp& app) {
 
     mrtGtx->setup({ P0PATHVERT, P0PATHFRAG, P0PATHGEOM }, 
                   &rdrpass, &descPoolBindings);
+    //mrtGtx->pipeline.rasterState.polygonMode = VK_POLYGON_MODE_LINE;
     mrtGtx->create();
 
     Obj& terrain     = scene.push(mrtGtx);
@@ -379,9 +335,24 @@ void Engine::run(Vkapp& app) {
         obj->get<Terrain>()->init();
     };
     void (*updateProc)(Obj*) = [](Obj* obj) -> void { 
-        defaultCam.setPerp(FOV, 1.0, 0.0001);
+        defaultCam.setPerp(FOV, 1.0, 0.01, 10000);
         defaultCam.updateView(); 
         obj->get<Terrain>()->update();
+    }; 
+
+    void (*updateProc2)(Obj*) = [](Obj* obj) -> void { 
+        defaultCam.setPerp(FOV, 1.0, 0.1, 10000);
+
+        fvec3 oldPos = defaultCam.trans.pos; 
+        fvec3 oldRot = defaultCam.trans.rot; 
+
+        defaultCam.setPosition(fvec3(defaultLight.pos.x, -defaultLight.pos.y, defaultLight.pos.z));
+        defaultCam.lookat(fvec3(0.,0.,0.));
+
+        obj->get<Terrain>()->update();
+
+        defaultCam.setPosition(oldPos);
+        defaultCam.setRotation(oldRot);
     }; 
 
     Terrain* tt = terrain.add<Terrain>();
@@ -397,14 +368,13 @@ void Engine::run(Vkapp& app) {
     GfxContext* shadowGtx = shadowScene.push();
     shadowGtx->setup({ P0PATHVERT, "", P0PATHGEOM},
                      &rdrpassShadow, &descPoolBindings);
-
     shadowGtx->create();
     Obj& terrainShadowObj  = shadowScene.push(shadowGtx);
     Terrain* terrainShadow = terrainShadowObj.add<Terrain>();
     terrainShadow->gtx     = shadowGtx;
     terrainShadow->cam     = &defaultCam;
     terrainShadowObj.setInitCbk(initProc);
-    terrainShadowObj.setUpdateCkb(updateProc);
+    terrainShadowObj.setUpdateCkb(updateProc2);
     shadowScene.init();
     //-------------------
 

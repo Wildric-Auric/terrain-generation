@@ -42,9 +42,9 @@ void GfxContext::setup(const ShaderLoc& loc, Renderpass* r,const std::vector<VkD
 
     uchar cur = 0;
 
-    !loc.vert.empty() ? stages[cur++] = vertS.stageCrtInfo : void();
-    !loc.frag.empty() ? stages[cur++] = fragS.stageCrtInfo : void();
-    !loc.geom.empty() ? stages[cur++] = geomS.stageCrtInfo : void();
+    !loc.vert.empty() ? stages[cur++] = vertS.stageCrtInfo : stages[cur];
+    !loc.frag.empty() ? stages[cur++] = fragS.stageCrtInfo : stages[cur];
+    !loc.geom.empty() ? stages[cur++] = geomS.stageCrtInfo : stages[cur];
 
     rdrpass = r;
     pipeline.fillCrtInfo(rdrpass->_subpasses._strideInfo[0].colLen);

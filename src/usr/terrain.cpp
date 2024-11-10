@@ -5,6 +5,8 @@ extern Sampler smpler;
 extern Img     im;
 extern ImgView imgView;
 
+float ti = 0.0f;
+
 void terrainObjUpdate(Obj* obj) {
     MeshRenderer& mr  = *obj->get<MeshRenderer>();    
     Transform*    tr  = obj->get<Transform>();
@@ -34,9 +36,15 @@ void terrainObjUpdate(Obj* obj) {
     wrt1.pImageInfo      = &imgInf;
     mr._gobj._descSet.wrt(&wrt1, 1);
 
-    dat.unfData.model = tr->_model;
-    dat.unfData.proj  = ter->cam->_proj;
-    dat.unfData.view  = ter->cam->_view;
+//    fmat4 trans(1.0);
+//    if (tr->pos.z == (ter->_chunckNum.x - 1)* ter->_chunckSize.x) {
+//        TranslateMat(trans, fvec3(0.0,0.0,0.0));
+//    }
+
+    dat.unfData.unfData.model = tr->_model;
+    dat.unfData.unfData.proj  = ter->cam->_proj;
+    dat.unfData.unfData.view  = ter->cam->_view;
+    dat.unfData.time  = ti;
 
     dat.unf.wrt(&dat.unfData);
     mr._gobj._descSet.wrt(&wrt0, 0);  
@@ -51,11 +59,21 @@ void Terrain::init() {
         offset.z   = 0.0f; 
         uvoffset.y = 0.0f; 
         for (int j = 0; j < _chunckNum.y; ++j) {
+           addChunck(offset, uvoffset);
+           offset.z   += _chunckSize.y ;
+           uvoffset.y += 1.0;
+        }
+        offset.x += _chunckSize.x;
+        uvoffset.x += 1.0f;
+    }
+}
+
+void Terrain::addChunck(const fvec3 pos, const fvec2& uvoffset) {
            _chuncks.push_back({});
            _objs.push_back({});
            _dat.push_back({});
            TerrainCbkData& cbk = _dat.back();
-           cbk.unf.create(gtx->pipeline._vkdata,sizeof(MVPData));
+           cbk.unf.create(gtx->pipeline._vkdata,sizeof(TerrainCbkData));
            cbk.terrainPtr = this;
 
            SubdivQuad&   q = _chuncks.back();
@@ -65,28 +83,58 @@ void Terrain::init() {
            Transform*    tr = obj.add<Transform>();
 
            //int LOD = 7 - 6 * j / _chunckNum.x ;
-           int LOD = 8;
-
+           
+           int LOD = 4;
+           if ((int)uvoffset.y >= _chunckNum.x - 1) 
+                LOD = 8;
+           else if ((int)uvoffset.y >= _chunckNum.x - 3 ) 
+                LOD = 7;
            q.init(LOD, _chunckSize.x * 0.5, 1, uvoffset);
            mr->init();
            mr->_gobj.init(gtx, &q._data);
            //tr->size = fvec3(_chunckSize.x, _chunckSize.y, 1.0);
-           tr->pos    = offset;
+           tr->pos    = pos;
            tr->rot.x  = 90.0f;
            tr->setModel();
            obj.setUpdateCkb(terrainObjUpdate);
            obj.updateCbkData = &cbk; 
+}
 
-           offset.z   += _chunckSize.y ;
-           uvoffset.y += 1.0;
-        }
-        offset.x += _chunckSize.x;
-        uvoffset.x += 1.0f;
+void Terrain::deleteChunck(ui32 i) {
+        _dat[i].unf.dstr();
+        _chuncks[i].dstr();
+        _objs[i].get<MeshRenderer>()->_gobj.dstr();
+}
+
+void Terrain::clean() {
+    for (int i = 0; i < _objs.size(); ++i )  {
+        deleteChunck(i); 
     }
+    _dat.clear();
+    _chuncks.clear();
+    _objs.clear();
 }
 
 void Terrain::update() {    
     for (Obj& o : _objs) {
         o.update();
     }
+}
+
+
+//--------------------------
+
+
+void DynamicTerrain::init() {
+
+}
+
+void DynamicTerrain::update() {
+    for (auto& pr : chuncks) {
+        pr.second->obj.update();
+    }
+} 
+
+void DynamicTerrain::clean() {
+
 }

@@ -21,6 +21,7 @@ class Component {
     
     inline virtual void init()   {};
     inline virtual void update() {};
+    inline virtual void clean()  {};
 };
 
 class Transform : public Component {

@@ -20,7 +20,7 @@ LRESULT CALLBACK defaultWinProc(HWND hwnd, UINT uMsg,
 }
 
 struct LightData {
-    fvec3 pos = fvec3(-0.4, 20.7, -0.2);
+    fvec3 pos = fvec3(-43.35, 200.750, -112.0);
     fvec3 col = fvec3(1.0, 1.0, 1.0);
 };
 
@@ -57,15 +57,28 @@ inline void UIBegin() {
      ImGui_ImplWin32_NewFrame();
      ImGui::NewFrame();
 }
+#include "scene.h"
+#include "terrain.h"
 
 extern float FOV;
+extern Scene scene;
 inline void UIRender() {   
     ImGui::Begin("inspector");
     ImGui::DragFloat("FOV", &FOV, 0.05);
     ImGui::DragFloat3("Camera Position", &defaultCam.trans.pos.x, 0.05);
     ImGui::DragFloat3("Camera Rotation", &defaultCam.trans.rot.x, 0.05);
     ImGui::DragFloat3("Light Position",  &defaultLight.pos.x, 0.05);
-    ImGui::DragFloat3("Light Color",     &defaultLight.col.x, 0.05);
+    ImGui::DragFloat("fallout", &defaultLight.col.y, 1.0);
+    if (ImGui::Button("Clean")) {
+        scene.objs.begin()->second.back().get<Terrain>()->clean();
+    }
+    static fvec2 off;
+    static fvec3 pos;
+    ImGui::DragFloat2("uvoffset", &off.x);
+    ImGui::DragFloat3("pos",  &pos.x);
+    if (ImGui::Button("Add")) {
+        scene.objs.begin()->second.back().get<Terrain>()->addChunck(pos,off);
+    }
     ImGui::End();
     ImGui::ShowMetricsWindow();
     ImGui::Render();
