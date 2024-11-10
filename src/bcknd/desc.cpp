@@ -25,6 +25,7 @@ VkResult DescPool::create(const VulkanData& vkdata) {
     }
 
     poolCrtInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolCrtInfo.flags         = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     poolCrtInfo.poolSizeCount = poolSizes.size();
     poolCrtInfo.pPoolSizes    = poolSizes.data();
     poolCrtInfo.maxSets       = _maxSets;
