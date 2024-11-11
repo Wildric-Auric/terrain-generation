@@ -7,4 +7,4 @@ buildsys/b.bat
 # Description
 An example of usage of vkutil library, having terrain generation as purpose.
 
-<img width="374" alt="Screenshot 2024-11-11 001929" src="https://github.com/user-attachments/assets/5668b046-f9f8-447d-a007-f3f7d9259e4f">
+<img width="959" alt="Screenshot 2024-11-11 012120" src="https://github.com/user-attachments/assets/d3caa0bc-d3d7-472c-bacb-1fc527ded623">
