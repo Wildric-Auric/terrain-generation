@@ -1,8 +1,6 @@
 mkdir build
 mkdir .\build\bin
 
-call python .\buildsys\scp.py
-
 cd ./build
 rm -f ALL_BUILD*
 msbuild.exe -p:Configuration=Release
