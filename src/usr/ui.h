@@ -26,6 +26,7 @@ struct LightData {
 
 extern LightData defaultLight;
 extern Cam   defaultCam;
+extern float ti;
 
 //As NWengine uses directly windows api, we just need to call imgui callback to handle interactions
 inline LRESULT CALLBACK imguiProcCallback (HWND hwnd, UINT umsg, WPARAM wparam, LPARAM lparam) {
@@ -62,6 +63,8 @@ inline void UIBegin() {
 
 extern float FOV;
 extern Scene scene;
+extern fvec3 obsPos;
+
 inline void UIRender() {   
     ImGui::Begin("inspector");
     ImGui::DragFloat("FOV", &FOV, 0.05);
@@ -69,6 +72,7 @@ inline void UIRender() {
     ImGui::DragFloat3("Camera Rotation", &defaultCam.trans.rot.x, 0.05);
     ImGui::DragFloat3("Light Position",  &defaultLight.pos.x, 0.05);
     ImGui::DragFloat("fallout", &defaultLight.col.y, 1.0);
+    ImGui::DragFloat("ti", &ti, 1.0);
     if (ImGui::Button("Clean")) {
         scene.objs.begin()->second.back().get<Terrain>()->clean();
     }
@@ -76,6 +80,7 @@ inline void UIRender() {
     static fvec3 pos;
     ImGui::DragFloat2("uvoffset", &off.x);
     ImGui::DragFloat3("pos",  &pos.x);
+    ImGui::DragFloat3("observer",  &obsPos.x);
     if (ImGui::Button("Add")) {
         scene.objs.begin()->second.back().get<Terrain>()->addChunck(pos,off);
     }

@@ -50,21 +50,44 @@ struct DynChunckCbk {
 };
 
 struct DynChunck {
-    SubdivQuad   quad;
+    SubdivQuad quad;
     Obj          obj;
     DynChunckCbk cbkData;
-    
+    bool isFree = true;     /*Always true for now*/
+};
+
+struct ChunckMapObj {
+    std::vector<DynChunck> pool;
+    arch cursor = 0;
 };
 
 class DynamicTerrain : public Component {
 public:
     INHERIT_COMPONENT(DynamicTerrain);
-    /*Level of details as key, a container */
-    std::unordered_map<ui8, std::list<DynChunck>> pools;
-    /*Chunck coordinate as key, a pointer to the chunck as value */
-    std::unordered_map<ui16, DynChunck*> chuncks;
+    /*A map having LOD as key  pool containing all quads*/
+    std::unordered_map<ui32, ChunckMapObj> _pools;
+    /*Rendered  quads*/
+    std::unordered_map<DynChunck*, DynChunck*> _usedChunks;
+    /*Parameters for chunck usage strategy*/
+    /*Original quad size, cented on 0, maybe add offset later */
+    fvec2 size = fvec2(10.0f, 10.0f);
+    const int MAX_ELE = 200; //TODO::Make this dynamic, should depend on rad
+    int rad = 5;
+    int maxLod = 8;
     
-    Cam* cam;
+    std::vector<ui32>  usedIndices; 
+    Transform*  observer = nullptr;
+    GfxContext* gtx      = nullptr;
+    Cam*        cam      = nullptr;
+
+    DynChunck* getFreeChunck();
+    DynChunck* addChunk();
+    DynChunck* subdivChunk();
+
+    int  getLod(int i, int j, float y);
+    void addChunck();
+    void highDetailsPart(const fvec3&);
+    void infinitePart(const fvec3&);
 
     void init()   override;
     void update() override; 

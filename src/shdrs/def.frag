@@ -11,9 +11,8 @@ layout(set = 0, binding = 3) uniform LightData {
 layout(location = 0) in  vec2 uv;
 layout(location = 0) out vec4 final;
 
-
 void main() {
-    
+    vec3 ambiant = vec3(0.1);
     vec4 color4 = texture(colAtt, uv);
     vec3 normal = texture(normalAtt, uv).xyz;
     vec3 pos    = texture(posAtt, uv).xyz;
@@ -30,10 +29,11 @@ void main() {
 
     //Diffusif light
     d   = max(0.0,dot(ldir, normal));
-    vec3  col = d * color ; 
+    vec3  col = d * color + ambiant * color; 
 
     float t = clamp(pos.z / lightData.col.x,0.0,1.0 );
-    final = vec4(mix(bg*1.01,col, pow(t,32.0)),1.0);
+    //final = vec4(mix(bg*1.01,col, pow(t,32.0)),1.0);
+    final = vec4(col,1.0);
 
     //debug
     //final = vec4((texture(colAtt,uv) + texture(normalAtt,uv) + texture(posAtt, uv)).xyz / 3.0, 1.0);

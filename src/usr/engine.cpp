@@ -1,4 +1,3 @@
-
 #include "engine.h"
 
 #include "ui.h"
@@ -7,7 +6,6 @@
 #include "bcknd/desc.h"
 #include "bcknd/frame.h"
 #include "bcknd/support.h"
-#include "bcknd/params.h"
 #include "bcknd/vkimg.h"
 
 #include "shared.h"
@@ -16,7 +14,6 @@
 #include "cam.h"
 
 #include "scene.h"
-#include "components/mesh_renderer.h"
 #include "terrain.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -26,6 +23,9 @@
 #define P0PATHVERT "../build/bin/gpu_terrain.mrt.vert.spv"
 #define P0PATHFRAG "../build/bin/gpu_terrain.mrt.frag.spv"
 #define P0PATHGEOM "../build/bin/gpu_terrain.mrt.geom.spv"
+
+#define DYNTERPATHVERT "../build/bin/dyn_terrain.mrt.vert.spv"
+#define DYNTERPATHFRAG "../build/bin/dyn_terrain.mrt.frag.spv"
 
 #define P1PATHVERT "../build/bin/def.vert.spv"
 #define P1PATHFRAG "../build/bin/def.frag.spv"
@@ -37,19 +37,28 @@
 UniBuff lightBuffer;
 
 float FOV = 60.0;
+float aspectRatio = 1.0f;
 
 LightData defaultLight;
 Cam       defaultCam;
 Transform cubeTrans(nullptr);
 GfxObject  terObj;
 GfxObject  cubeObj;
-GfxObject  rendObj;
+
+Obj        rendObj;
+GfxObject  gfxRendObj;
+Quad renderingQuad;
 
 GfxContext gtxDef;       //Final deferred rendering ctx 
 
 Img     im; 
 ImgView imgView;
 Sampler smpler;
+
+//Temp
+fvec3 obsPos;
+Transform trPos = Transform(nullptr);
+
 
 void loadImg(const std::string& path, Img& im, ImgView& imView) {
     Buffer  imBuff;
@@ -93,13 +102,13 @@ typedef struct {
         Matrix4<float> proj;
 } UnfData;
 
-void setViewPort(ui32 x, ui32 y, Frame& frame, bool m = 0) {
+void setViewPort(ui32 x, ui32 y, Frame& frame, bool clmp = 0) {
        VkViewport viewport;
        VkRect2D   scissor;
        viewport.minDepth = 0.0f;
        viewport.maxDepth = 1.0f;
        ui32 v = Min<i32>(x,y);
-       if (m) {
+       if (!clmp) {
        viewport.width =  Max<i32>(x, 5);
        viewport.height = Max<i32>(y, 5);
        }
@@ -113,6 +122,18 @@ void setViewPort(ui32 x, ui32 y, Frame& frame, bool m = 0) {
        scissor.offset =  { (i32)viewport.x, (i32)viewport.y };
        vkCmdSetViewport(frame.cmdBuff.handle, 0, 1, &viewport);
        vkCmdSetScissor(frame.cmdBuff.handle, 0, 1, &scissor);
+}
+
+void rendObjInitProc(Obj* obj) {
+        renderingQuad.setInitSize({1.0f,1.0f});
+        renderingQuad.init();
+        obj->add<Transform>();
+        MeshRenderer* mesh = obj->add<MeshRenderer>();    
+        mesh->_gobj.init(&gtxDef, &renderingQuad);
+};
+
+void rendObjUpdateProc(Obj* obj) {
+
 }
 
 static void shadowRndPass2(Scene& scene, Frame& frame, Vkapp& app, VkQueue& q) {
@@ -137,14 +158,19 @@ static void mrtRndPass2(Scene& scene, Frame& frame, Vkapp& app, VkQueue& q) {
 static void defRndPass(Renderpass& rdrpassDef, Renderpass& rdrpass, 
                        Frame& frame, Vkapp& app, GfxContext& gtxDef, 
                        VkQueue& q,
-                       GfxObject& rendObj, ImgView& v0, ImgView& v1, ImgView& v2, Sampler& defSampler) {
+                       Obj& rendObj, ImgView& v0, ImgView& v1, ImgView& v2, Sampler& defSampler) {
+
+
+       GfxObject& gObj = rendObj.get<MeshRenderer>()->_gobj;
+       Transform& tr   = *rendObj.get<Transform>();
 
        rdrpassDef.begin(frame.cmdBuff, frame.swpIndex); 
-       setViewPort(app.win.drawArea.x, app.win.drawArea.y, frame, 1);
+       setViewPort(app.win.drawArea.x, app.win.drawArea.y, frame, 0);
        gtxDef.bind(frame.cmdBuff);
        //----------Update Descriptor set and uniform----------
        VkWriteDescriptorSet  wrt = {};
        VkWriteDescriptorSet  wrt0 {};
+       VkWriteDescriptorSet  wrt1 {};
        VkDescriptorImageInfo inf{};
        VkDescriptorBufferInfo infB{};
        
@@ -159,19 +185,19 @@ static void defRndPass(Renderpass& rdrpassDef, Renderpass& rdrpass,
        wrt.descriptorCount = 1;
        wrt.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
        wrt.pImageInfo = &inf;
-       rendObj._descSet.wrt(&wrt, 0);
+       gObj._descSet.wrt(&wrt, 0);
        ++iter;
        iter->image.crtInfo.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
        iter->image.changeLyt(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, *frame._data.cmdBuffPool);
        v1.fillCrtInfo(iter->image); v1.create(app.data);
        inf.imageView = v1.handle;
-       rendObj._descSet.wrt(&wrt, 1);
+       gObj._descSet.wrt(&wrt, 1);
        ++iter;
        iter->image.crtInfo.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
        iter->image.changeLyt(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, *frame._data.cmdBuffPool);
        v2.fillCrtInfo(iter->image); v2.create(app.data);
        inf.imageView = v2.handle;
-       rendObj._descSet.wrt(&wrt, 2);
+       gObj._descSet.wrt(&wrt, 2);
 
        //-------------------
        lightBuffer.wrt(&defaultLight);
@@ -180,10 +206,33 @@ static void defRndPass(Renderpass& rdrpassDef, Renderpass& rdrpass,
        wrt0.pBufferInfo    = &infB;
        infB.range          = sizeof(LightData);
        infB.buffer         = lightBuffer._buff.handle;
-       rendObj._descSet.wrt(&wrt0, 3);
+       gObj._descSet.wrt(&wrt0, 3);
        //-------------------
-       rendObj.update(frame.cmdBuff);
-       rendObj.draw();
+       static UniBuff trBuff;
+       if (!trBuff._buff.handle) {
+            trBuff.create(gObj._gtx->pipeline._vkdata, sizeof(tr.getModel()));
+       }
+       tr.scale = fvec3(2.0f,2.0f,1.0f);
+       ivec2 winSize = app.win.drawArea;
+
+//       if (winSize.x > winSize.y) 
+//           tr.scale.x *= (float)winSize.x/winSize.y;
+//       if (winSize.y > winSize.x) 
+//           tr.scale.y *= (float)winSize.y/winSize.x;
+
+       tr.setModel();
+       trBuff.wrt(&tr.getModel());
+
+       VkDescriptorBufferInfo infB1{};
+       wrt1.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+       wrt1.descriptorCount = 1;
+       wrt1.pBufferInfo     = &infB1;
+       infB1.range          = sizeof(tr.getModel());
+       infB1.buffer         = trBuff._buff.handle;
+       gObj._descSet.wrt(&wrt1, 4);
+
+       gObj.update(frame.cmdBuff);
+       gObj.draw();
 
        UIBegin(); 
        UIRender();
@@ -196,8 +245,8 @@ Scene scene;
 
 void Engine::run(Vkapp& app) {
     //Set default values
-    defaultCam.trans.pos = {38.6, -3.15, 96.85};
-    defaultCam.trans.rot = {0.0, 0.0, 0.0};
+    defaultCam.trans.pos = {0.0, -1.0, 0.0};
+    defaultCam.trans.rot = {20.0, 0.0, 0.0};
     //------------------
     CmdBufferPool gfxCmdPool;
     CmdBufferPool compCmdPool;
@@ -239,14 +288,14 @@ void Engine::run(Vkapp& app) {
     Renderpass& rdrpassDef = rdrcnt.add();
     Renderpass& rdrpassShadow = rdrcnt.add();
 
-
+    //Renderpass
     rdrpass._subpasses.setup(1,4);
-    rdrpass._subpasses.add(app.win, app.data, att, nullptr);  //First subpass
+    rdrpass._subpasses.add(app.win, app.data, att, nullptr); 
     rdrpass.setSwpChainHijack(-1, 0);
     rdrpass.create(app.data, app.win);
     rdrpass.fillBeginInfo(app.win, {0.0f, 0.0, 0.0, 0.0f});
 
-    //Second rdrpass for rendering
+    //Second rdrpass for deffered rendering, takes MRT and produces one image 
     AttachmentContainer att0;
     auto colAtt0 = att0.add();
     colAtt0->desc.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; 
@@ -289,19 +338,14 @@ void Engine::run(Vkapp& app) {
 
 
     //---------------Create Abstraction for gfx---------------------
-
-    Quad t;
-    Quad t0;
-    Cube cube;
-    SubdivQuad subQuad;
-
     std::vector<VkDescriptorSetLayoutBinding> lytBindings;
     lytBindings =  
     {
      {0, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
      {1, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
      {2, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-     {3, VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
+     {3, VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+     {4, VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr}
     };
   
     gtxDef.setup({ P1PATHVERT, P1PATHFRAG }, &rdrpassDef, &lytBindings);
@@ -317,17 +361,14 @@ void Engine::run(Vkapp& app) {
     smpler.create(app.data);
     //--------------------------- 
 
-
-
-
     std::vector<VkDescriptorSetLayoutBinding> descPoolBindings = {
         { 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr },
-        { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_GEOMETRY_BIT, nullptr}
+        //{ 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_GEOMETRY_BIT, nullptr}
     };
 
-    mrtGtx->setup({ P0PATHVERT, P0PATHFRAG, P0PATHGEOM }, 
+    mrtGtx->setup({ DYNTERPATHVERT, DYNTERPATHFRAG}, 
                   &rdrpass, &descPoolBindings);
-    //mrtGtx->pipeline.rasterState.polygonMode = VK_POLYGON_MODE_LINE;
+    mrtGtx->pipeline.rasterState.polygonMode = VK_POLYGON_MODE_LINE;
     mrtGtx->create();
 
     Obj& terrain     = scene.push(mrtGtx);
@@ -335,13 +376,30 @@ void Engine::run(Vkapp& app) {
         obj->get<Terrain>()->init();
     };
     void (*updateProc)(Obj*) = [](Obj* obj) -> void { 
-        defaultCam.setPerp(FOV, 1.0, 0.01, 10000);
+        defaultCam.setPerp(FOV, aspectRatio, 0.01, 10000);
         defaultCam.updateView(); 
         obj->get<Terrain>()->update();
     }; 
 
+    void (*initProcGen)(Obj*) = [](Obj* obj) -> void { 
+        for (auto& c : obj->comps) {
+            c.second->init();
+        }
+    };
+    void (*updateProcGen)(Obj*) = [](Obj* obj) -> void { 
+        defaultCam.setPerp(FOV, aspectRatio, 0.01, 10000);
+        defaultCam.updateView(); 
+
+        trPos.pos = defaultCam.trans.pos;
+
+        for (auto& c : obj->comps) {
+            c.second->update();
+           ((DynamicTerrain*)(c.second))->observer = &trPos;
+        }
+    }; 
+
     void (*updateProc2)(Obj*) = [](Obj* obj) -> void { 
-        defaultCam.setPerp(FOV, 1.0, 0.1, 10000);
+        defaultCam.setPerp(FOV, aspectRatio, 0.1, 10000);
 
         fvec3 oldPos = defaultCam.trans.pos; 
         fvec3 oldRot = defaultCam.trans.rot; 
@@ -355,38 +413,40 @@ void Engine::run(Vkapp& app) {
         defaultCam.setRotation(oldRot);
     }; 
 
-    Terrain* tt = terrain.add<Terrain>();
-    tt->gtx = mrtGtx;
-    tt->cam = &defaultCam;
-    terrain.setInitCbk( initProc );
-    terrain.setUpdateCkb( updateProc );
+//    Terrain* tt = terrain.add<Terrain>();
+//    tt->gtx = mrtGtx;
+//    tt->cam = &defaultCam;
+//    terrain.setInitCbk( initProc );
+//    terrain.setUpdateCkb( updateProc );
+//
+//    scene.init();
 
+    DynamicTerrain* dynTer = terrain.add<DynamicTerrain>();
+    dynTer->gtx = mrtGtx;
+    dynTer->cam = &defaultCam;
+
+    terrain.setInitCbk(initProcGen);
+    terrain.setUpdateCkb(updateProcGen);
     scene.init();
 
     //Shadow scene-------
-    Scene shadowScene;
-    GfxContext* shadowGtx = shadowScene.push();
-    shadowGtx->setup({ P0PATHVERT, "", P0PATHGEOM},
-                     &rdrpassShadow, &descPoolBindings);
-    shadowGtx->create();
-    Obj& terrainShadowObj  = shadowScene.push(shadowGtx);
-    Terrain* terrainShadow = terrainShadowObj.add<Terrain>();
-    terrainShadow->gtx     = shadowGtx;
-    terrainShadow->cam     = &defaultCam;
-    terrainShadowObj.setInitCbk(initProc);
-    terrainShadowObj.setUpdateCkb(updateProc2);
-    shadowScene.init();
+    //Scene shadowScene;
+    //GfxContext* shadowGtx = shadowScene.push();
+    //shadowGtx->setup({ P0PATHVERT, "", P0PATHGEOM},
+    //                 &rdrpassShadow, &descPoolBindings);
+    //shadowGtx->create();
+    //Obj& terrainShadowObj  = shadowScene.push(shadowGtx);
+    //Terrain* terrainShadow = terrainShadowObj.add<Terrain>();
+    //terrainShadow->gtx     = shadowGtx;
+    //terrainShadow->cam     = &defaultCam;
+    //terrainShadowObj.setInitCbk(initProcGen);
+    //terrainShadowObj.setUpdateCkb(updateProcGen);
+    //shadowScene.init();
     //-------------------
 
-    //subQuad.init(10, 0.0, 1); 
-    //cube.init();
-    t0.setInitSize({2.0f,2.0f});
-    t0.init();
-
-    //terObj.init(&gtx, &subQuad._data);
-    //cubeObj.init(&gtx, &cube);
-    rendObj.init(&gtxDef, &t0);
-
+    rendObj.setInitCbk(rendObjInitProc);
+    rendObj.setUpdateCkb(rendObjUpdateProc);
+    rendObj.init();
 
     ImgView v0, v1, v2;
     //------------Init ImGui------------------
@@ -425,12 +485,15 @@ void Engine::run(Vkapp& app) {
        if (!frame.begin())
            continue;
 
+        aspectRatio = (float)app.win.drawArea.x / app.win.drawArea.y;
+        //aspectRatio = 1.0;
+
         v0.dstr();
         v1.dstr();
         v2.dstr();
 
-       shadowRndPass2(shadowScene, frame, app, q);
-       frame.nextRdrpass();
+       //shadowRndPass2(shadowScene, frame, app, q);
+       //frame.nextRdrpass();
        mrtRndPass2(scene, frame, app, q);
        frame.nextRdrpass();
        defRndPass(rdrpassDef, rdrpass, frame, app, gtxDef, q, rendObj, v0, v1, v2, defSampler);
@@ -451,9 +514,7 @@ void Engine::run(Vkapp& app) {
 	compCmdPool.dstr();
 
     defSampler.dstr(); 
-    t.destroy();
-    t0.destroy();
-    cube.destroy();
+    renderingQuad.destroy();
     v0.dstr();
     v1.dstr();
     v2.dstr();

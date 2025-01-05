@@ -31,10 +31,10 @@ float noise(in vec2 pos) {
 float fbm(vec2 pos) {
    float res = 0.0;
    res =   3.0 * pow(noise(pos), 4.5);
-   res +=  0.25  * pow(noise(pos * 1.0 ), 2.0);
-   res +=  0.325 *  noise(pos    * 8.0 );
-   res +=  0.0125 * noise(pos    * 32.0 );
-   res +=  0.00512 * noise(pos    * 64.0 );
+   res +=  0.25  * pow(noise(pos * 2.0 ), 2.0);
+   res +=  0.325 *  noise(pos    * 4.0 );
+   res +=  0.0925 * noise(pos    * 16.0 );
+   res +=  0.0512 * noise(pos    * 32.0 );
 
 //   ret += noise(pos);
 //   ret += 0.5     * noise(2.0 * pos);
@@ -85,9 +85,9 @@ void main() {
 
     float f = 0.1;
     vec2 uv0[3] = vec2[3](uv[0], uv[1], uv[2]);
-//    uv0[0].y -= f* ubo[0].uTime; 
-//    uv0[1].y -= f* ubo[1].uTime; 
-//    uv0[2].y -= f* ubo[2].uTime; 
+    uv0[0].y -= f* ubo[0].uTime; 
+    uv0[1].y -= f* ubo[1].uTime; 
+    uv0[2].y -= f* ubo[2].uTime; 
 
     vec4 pos; vec4 pos1; vec4 pos2;
     pos    = ubo[0].model * gl_in[0].gl_Position;

@@ -40,7 +40,6 @@ void Cam::resetView() {
 
 void Cam::updateView() {
     resetView();
-    updateViewRot();
     updateViewTrans();
-
+    updateViewRot();
 };

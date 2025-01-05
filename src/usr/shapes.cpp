@@ -146,7 +146,7 @@ void SubdivQuad::init(const ui32 sub, const float res, bool isDynamic, fvec2 uvo
     _subdiv = sub;
     fvec2 base = {-res, -res};
     fvec2 end  = {res,  res};
-    float c = pow(2, sub - 1) + 1;
+    float c = int(pow(2.0, sub - 1.0) + 1);
     fvec2 step = (end - base) * (1.0/c);
     for (ui32 i = 0; i < c+1; ++i) {
         std::vector<float> tmp(5);

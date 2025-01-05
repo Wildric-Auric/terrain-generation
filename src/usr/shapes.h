@@ -48,7 +48,7 @@ class Mesh : public Shape {
 
 class SubdivQuad {
     public:
-    ui32 _subdiv = 10;
+    ui32 _subdiv = 5;
     Mesh _data;
     
     void init(const ui32 sub, const float res = 0.5f, bool isDynamic = 0, fvec2 uvoffset = {0.0f, 0.0f});
